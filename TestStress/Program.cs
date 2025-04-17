@@ -135,6 +135,13 @@ namespace BingoSignalRClient
                                 );
 
                                 var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
+                                if (!selectCardResponse.IsSuccessStatusCode)
+                                {
+                                    var errorContent = await selectCardResponse.Content.ReadAsStringAsync();
+                                    Console.WriteLine($"User {userIndex}: Failed to select card. Status: {(int)selectCardResponse.StatusCode} {selectCardResponse.StatusCode}");
+                                    Console.WriteLine($"User {userIndex}: Response body: {errorContent}");
+                                    return;
+                                }
                                 selectCardResponse.EnsureSuccessStatusCode();
 
                                 Console.WriteLine($"User {userIndex}: Card selected after {randomDelay}ms");
