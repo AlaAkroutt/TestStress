@@ -63,7 +63,7 @@ namespace BingoSignalRClient
                 }));
 
                 // Add slight delay between user spawns
-                await Task.Delay(100);
+                await Task.Delay(1);
 
                 lock (lockObject)
                 {
