@@ -15,17 +15,21 @@ namespace BingoSignalRClient
     class Program
     {
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
-        private static int USERS = int.Parse(Environment.GetEnvironmentVariable("users")); // Number of concurrent simulated users
+        private const int USERS = 5000; // Number of concurrent simulated users
         private static int fail = 0;
         private static int notif = 0;
         private static readonly object lockObject = new object();
+
+        // Track user IDs to ensure uniqueness
+        private static readonly HashSet<int> usedUserIds = new HashSet<int>();
+        private static readonly object userIdsLock = new object();
 
         static async Task Main(string[] args)
         {
             Console.WriteLine("Starting Bingo SignalR Client Simulation");
 
             // Create a semaphore to limit concurrent connections if needed
-            var semaphore = new SemaphoreSlim(USERS); // Limit to 100 concurrent operations
+            var semaphore = new SemaphoreSlim(1000); // Limit to 1000 concurrent operations
             var tasks = new List<Task>();
 
             for (int i = 0; i < USERS; i++)
@@ -69,13 +73,46 @@ namespace BingoSignalRClient
             {
                 Console.WriteLine($"User {userIndex}: Starting...");
 
-                // Step 1: Get codeClient
-                var content = new StringContent("", Encoding.UTF8, "application/json");
-                var response = await httpClient.PostAsync($"{BASE_URL}/api/Utilisateur?tokenUser=0", content);
-                response.EnsureSuccessStatusCode();
+                // Step 1: Get codeClient with uniqueness check
+                UserData userData = null;
+                bool isUniqueUser = false;
+                int maxRetries = 5;
+                int retryCount = 0;
 
-                var responseBody = await response.Content.ReadAsStringAsync();
-                var userData = JsonConvert.DeserializeObject<UserData>(responseBody);
+                while (!isUniqueUser && retryCount < maxRetries)
+                {
+                    var content = new StringContent("", Encoding.UTF8, "application/json");
+                    var response = await httpClient.PostAsync($"{BASE_URL}/api/Utilisateur?tokenUser=0", content);
+                    response.EnsureSuccessStatusCode();
+
+                    var responseBody = await response.Content.ReadAsStringAsync();
+                    userData = JsonConvert.DeserializeObject<UserData>(responseBody);
+
+                    // Check if this user ID is unique
+                    lock (userIdsLock)
+                    {
+                        if (!usedUserIds.Contains(userData.Id))
+                        {
+                            // Add to our tracking set
+                            usedUserIds.Add(userData.Id);
+                            isUniqueUser = true;
+                            Console.WriteLine($"User {userIndex}: Got unique user ID {userData.Id}");
+                        }
+                        else
+                        {
+                            retryCount++;
+                            Console.WriteLine($"User {userIndex}: Got duplicate user ID {userData.Id}, retrying ({retryCount}/{maxRetries})...");
+                            // Add a small delay before retrying
+                            Task.Delay(500).Wait();
+                        }
+                    }
+                }
+
+                // If we couldn't get a unique user after max retries, throw an exception
+                if (!isUniqueUser)
+                {
+                    throw new Exception($"Failed to get a unique user ID after {maxRetries} retries");
+                }
 
                 // Step 2: Login
                 var loginData = new { id = userData.Id, codeClient = userData.CodeClient };
@@ -140,8 +177,9 @@ namespace BingoSignalRClient
                                     var errorContent = await selectCardResponse.Content.ReadAsStringAsync();
                                     Console.WriteLine($"User {userIndex}: Failed to select card. Status: {(int)selectCardResponse.StatusCode} {selectCardResponse.StatusCode}");
                                     Console.WriteLine($"User {userIndex}: Response body: {errorContent}");
-                                    return;
+
                                 }
+
                                 selectCardResponse.EnsureSuccessStatusCode();
 
                                 Console.WriteLine($"User {userIndex}: Card selected after {randomDelay}ms");
