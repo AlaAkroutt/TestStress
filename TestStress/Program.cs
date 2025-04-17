@@ -42,7 +42,7 @@ namespace BingoSignalRClient
             LogMessage(LogLevel.Info, "Starting Bingo SignalR Client Simulation");
 
             // Create a semaphore to limit concurrent connections if needed
-            var semaphore = new SemaphoreSlim(1000); // Limit to 1000 concurrent operations
+            var semaphore = new SemaphoreSlim(USERS); // Limit to 1000 concurrent operations
             var tasks = new List<Task>();
 
             for (int i = 0; i < USERS; i++)
