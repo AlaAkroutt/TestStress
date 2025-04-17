@@ -17,7 +17,7 @@ namespace BingoSignalRClient
     class Program
     {
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
-        private const int USERS = 1000; // Number of concurrent simulated users
+        public static  int USERS = int.Parse( Environment.GetEnvironmentVariable("users")); // Number of concurrent simulated users
         private static int fail = 0;
         private static int notif = 0;
         private static int duplicateUsers = 0;
@@ -100,291 +100,23 @@ namespace BingoSignalRClient
                 int maxRetries = 5;
                 int retryCount = 0;
 
-                while (!isUniqueUser && retryCount < maxRetries)
-                {
-                    var content = new StringContent("", Encoding.UTF8, "application/json");
-                    var response = await httpClient.PostAsync($"{BASE_URL}/api/Utilisateur?tokenUser=0", content);
-                    response.EnsureSuccessStatusCode();
-
-                    var responseBody = await response.Content.ReadAsStringAsync();
-                    userData = JsonConvert.DeserializeObject<UserData>(responseBody);
-
-                    // Check if this user ID is unique
-                    lock (userIdsLock)
-                    {
-                        if (!usedUserIds.Contains(userData.Id))
-                        {
-                            // Add to our tracking set
-                            usedUserIds.Add(userData.Id);
-                            isUniqueUser = true;
-                            LogMessage(LogLevel.Info, $"User {userIndex}: Got unique user ID {userData.Id}");
-                        }
-                        else
-                        {
-                            retryCount++;
-                            LogMessage(LogLevel.Warning, $"User {userIndex}: Got duplicate user ID {userData.Id}, retrying ({retryCount}/{maxRetries})...");
-                            Interlocked.Increment(ref duplicateUsers);
-                            // Add a small delay before retrying
-                            Task.Delay(500).Wait();
-                        }
-                    }
-                }
-
-                // If we couldn't get a unique user after max retries, throw an exception
-                if (!isUniqueUser)
-                {
-                    var errorMsg = $"Failed to get a unique user ID after {maxRetries} retries";
-                    LogMessage(LogLevel.Error, $"User {userIndex}: {errorMsg}");
-                    throw new Exception(errorMsg);
-                }
-
-                // Step 2: Login
-                var loginData = new { id = userData.Id, codeClient = userData.CodeClient };
-                var loginContent = new StringContent(JsonConvert.SerializeObject(loginData), Encoding.UTF8, "application/json");
-                var loginResponse = await httpClient.PostAsync($"{BASE_URL}/api/Utilisateur/login", loginContent);
-                loginResponse.EnsureSuccessStatusCode();
-
-                var loginResponseBody = await loginResponse.Content.ReadAsStringAsync();
-                var tokenData = JsonConvert.DeserializeObject<TokenData>(loginResponseBody);
-                string token = tokenData.AccessToken;
-
-                // Update headers with token
-                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+               
+                 
 
                 // Step 3: Connect to SignalR
                 var connection = new HubConnectionBuilder()
-                    .WithUrl($"{BASE_URL}/api/notificationsHub", options =>
-                    {
-                        options.AccessTokenProvider = () => Task.FromResult(token);
-                    })
+                    .WithUrl($"{BASE_URL}/api/notificationsHub")
                     .WithAutomaticReconnect()
                     .Build();
 
                 bool cardSelected = false;
                 Card selectedCard = null;
 
-                // Handle "status" event (game progress)
-                connection.On<string>("status", async (status) =>
-                {
-                LogMessage(LogLevel.Debug, $"User {userIndex}: SignalR status = {status}");
-
-                    if (status == "distribution_in_progress" && !cardSelected)
-                    {
-                        // Step 4: Get Cards
-                        try
-                        {
-                            var cardsResponse = await httpClient.GetAsync($"{BASE_URL}/api/Card");
-                            cardsResponse.EnsureSuccessStatusCode();
-
-                            var cardsResponseBody = await cardsResponse.Content.ReadAsStringAsync();
-                            var cards = JsonConvert.DeserializeObject<List<Card>>(cardsResponseBody);
-
-                            if (cards == null)
-                            {
-                                LogMessage(LogLevel.Error, $"User {userIndex}: Failed to deserialize cards response");
-                                return;
-                            }
-
-                            if (cards.Count > 0)
-                            {
-                                try
-                                {
-                                    var selectedId = cards[0].Id; // Select the first card for simplicity
-                                    var random = new Random();
-                                    var randomDelay = random.Next(60000); // Random delay up to 60 seconds
-
-                                    LogMessage(LogLevel.Debug, $"User {userIndex}: Waiting {randomDelay}ms before selecting card");
-                                    // Use Task.Delay instead of setTimeout
-                                    await Task.Delay(randomDelay);
-
-                                    try
-                                    {
-                                        var selectCardData = new { id = selectedId };
-                                        var selectCardContent = new StringContent(
-                                            JsonConvert.SerializeObject(selectCardData),
-                                            Encoding.UTF8,
-                                            "application/json"
-                                        );
-
-                                        var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
-                                        selectCardResponse.EnsureSuccessStatusCode();
-
-                                        LogMessage(LogLevel.Info, $"User {userIndex}: Card selected after {randomDelay}ms");
-                                        Interlocked.Increment(ref notif);
-                                        cardSelected = true;
-                                        LogMessage(LogLevel.Info, $"User {userIndex}: Card selection successful");
-                                    }
-                                    catch (HttpRequestException ex)
-                                    {
-                                        LogMessage(LogLevel.Error, $"User {userIndex}: Failed to select card (HTTP): {ex.Message}");
-                                        Interlocked.Increment(ref apiErrors);
-                                    }
-                                    catch (System.Text.Json.JsonException ex)
-                                    {
-                                        LogMessage(LogLevel.Error, $"User {userIndex}: Failed to serialize card selection data: {ex.Message}");
-                                    }
-                                    catch (TaskCanceledException ex)
-                                    {
-                                        LogMessage(LogLevel.Warning, $"User {userIndex}: Card selection request was cancelled: {ex.Message}");
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        LogMessage(LogLevel.Error, $"User {userIndex}: Failed to select card (general error): {ex.Message}");
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    LogMessage(LogLevel.Error, $"User {userIndex}: Error preparing card selection: {ex.Message}");
-                                }
-                            }
-                        }
-                        catch (HttpRequestException ex)
-                        {
-                            LogMessage(LogLevel.Error, $"User {userIndex}: Failed to get cards (HTTP): {ex.Message}");
-                            Interlocked.Increment(ref apiErrors);
-                        }
-                        catch (System.Text.Json.JsonException ex)
-                        {
-                            LogMessage(LogLevel.Error, $"User {userIndex}: Failed to parse cards response: {ex.Message}");
-                        }
-                        catch (Exception ex)
-                        {
-                            LogMessage(LogLevel.Error, $"User {userIndex}: Failed to get cards (general error): {ex.Message}");
-                        }
-
-
-                        if (status == "emission_in_progress")
-                        {
-                            try
-                            {
-                                // Step 5: Get the selected card
-                                var selectedCardResponse = await httpClient.GetAsync($"{BASE_URL}/api/Card/GetSelectedCard");
-                                selectedCardResponse.EnsureSuccessStatusCode();
-
-                                var selectedCardResponseBody = await selectedCardResponse.Content.ReadAsStringAsync();
-                                var selectedCards = JsonConvert.DeserializeObject<List<Card>>(selectedCardResponseBody);
-
-                                if (selectedCards == null)
-                                {
-                                    LogMessage(LogLevel.Error, $"User {userIndex}: Failed to deserialize selected card response");
-                                    return;
-                                }
-
-                                if (selectedCards.Count > 0)
-                                {
-                                    selectedCard = selectedCards[0];
-                                    LogMessage(LogLevel.Info, $"User {userIndex}: Selected card loaded");
-                                }
-                                else
-                                {
-                                    LogMessage(LogLevel.Warning, $"User {userIndex}: No selected card available");
-                                }
-                            }
-                            catch (HttpRequestException ex)
-                            {
-                                LogMessage(LogLevel.Error, $"User {userIndex}: Failed to get selected card (HTTP): {ex.Message}");
-                                Interlocked.Increment(ref apiErrors);
-                            }
-                            catch (System.Text.Json.JsonException ex)
-                            {
-                                LogMessage(LogLevel.Error, $"User {userIndex}: Failed to parse selected card response: {ex.Message}");
-                            }
-                            catch (Exception ex)
-                            {
-                                LogMessage(LogLevel.Error, $"User {userIndex}: Failed to get selected card (general error): {ex.Message}");
-                            }
-                        }
-                    }
-                });
-
+       
                 // Handle "NumberSelected" event (user selects a number)
-                connection.On<int>("NumberSelected", async (number) =>
-                {
-                    try
-                    {
-                        if (selectedCard == null)
-                        {
-                            LogMessage(LogLevel.Debug, $"User {userIndex}: No selected card available for number {number}");
-                            return;
-                        }
-
-                        if (selectedCard.Cards == null)
-                        {
-                            LogMessage(LogLevel.Error, $"User {userIndex}: Selected card has null Cards property");
-                            return;
-                        }
-
-                        try
-                        {
-                            // Flatten the 2D array of numbers
-                            var flatNumbers = selectedCard.Cards.SelectMany(row => row).ToList();
-
-                            if (flatNumbers.Contains(number))
-                            {
-                                int score = 10; // or based on some logic
-                                var random = new Random();
-                                var randomDelay = random.Next(5000); // Random delay up to 5 seconds
-
-                                LogMessage(LogLevel.Debug, $"User {userIndex}: Waiting {randomDelay}ms before sending number {number}");
-                                await Task.Delay(randomDelay);
-
-                                try
-                                {
-                                    var numberData = new[] { number, score };
-                                    var numberContent = new StringContent(
-                                        JsonConvert.SerializeObject(numberData),
-                                        Encoding.UTF8,
-                                        "application/json"
-                                    );
-
-                                    var numberResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
-                                    numberResponse.EnsureSuccessStatusCode();
-
-                                    LogMessage(LogLevel.Info, $"User {userIndex}: Sent selected number {number} after {randomDelay}ms");
-                                }
-                                catch (HttpRequestException ex)
-                                {
-                                    LogMessage(LogLevel.Error, $"User {userIndex}: HTTP error sending selected number: {ex.Message}");
-                                    Interlocked.Increment(ref apiErrors);
-                                }
-                                catch (System.Text.Json.JsonException ex)
-                                {
-                                    LogMessage(LogLevel.Error, $"User {userIndex}: JSON error sending selected number: {ex.Message}");
-                                }
-                                catch (Exception ex)
-                                {
-                                    LogMessage(LogLevel.Error, $"User {userIndex}: General error sending selected number: {ex.Message}");
-                                }
-                            }
-                            else
-                            {
-                                LogMessage(LogLevel.Debug, $"User {userIndex}: Number {number} not in card");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LogMessage(LogLevel.Error, $"User {userIndex}: Error processing number {number}: {ex.Message}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogMessage(LogLevel.Error, $"User {userIndex}: Unhandled error in NumberSelected handler: {ex.Message}");
-                    }
-                });
-
+              
                 // Handle "Timer" event (game countdown)
-                connection.On<int>("Timer", (timeLeft) =>
-                {
-                    try
-                    {
-                        LogMessage(LogLevel.Debug, $"User {userIndex}: Timer = {timeLeft}");
-                    }
-                    catch (Exception ex)
-                    {
-                        LogMessage(LogLevel.Error, $"User {userIndex}: Error in Timer handler: {ex.Message}");
-                    }
-                });
-
+             
                 // Step 6: Start SignalR connection
                 try
                 {
