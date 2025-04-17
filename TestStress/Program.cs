@@ -15,7 +15,7 @@ namespace BingoSignalRClient
     class Program
     {
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
-        private const int USERS = 2; // Number of concurrent simulated users
+        private static int USERS = int.Parse(Environment.GetEnvironmentVariable("users")); // Number of concurrent simulated users
         private static int fail = 0;
         private static int notif = 0;
         private static readonly object lockObject = new object();
