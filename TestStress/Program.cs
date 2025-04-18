@@ -17,7 +17,7 @@ namespace BingoSignalRClient
     class Program
     {
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
-        public static  int USERS = int.Parse( Environment.GetEnvironmentVariable("users")); // Number of concurrent simulated users
+        public static int USERS = int.Parse(Environment.GetEnvironmentVariable("users")); // Number of concurrent simulated users
         private static int fail = 0;
         private static int notif = 0;
         private static int duplicateUsers = 0;
@@ -50,7 +50,8 @@ namespace BingoSignalRClient
                 int userIndex = i;
                 //await semaphore.WaitAsync(); // Wait for a slot to be available
 
-                
+                tasks.Add(Task.Run(async () =>
+                {
                     try
                     {
                         await SimulateUser(userIndex);
@@ -59,10 +60,10 @@ namespace BingoSignalRClient
                     {
                         //semaphore.Release(); // Release the slot when done
                     }
-              
+                }));
 
                 // Add slight delay between user spawns
-                await Task.Delay(5);
+                await Task.Delay(10);
 
                 lock (lockObject)
                 {
@@ -76,7 +77,7 @@ namespace BingoSignalRClient
             }
 
             // Wait for all tasks to complete
-            //await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks);
 
             // Log final statistics
             LogMessage(LogLevel.Info, "Simulation completed");
@@ -99,8 +100,8 @@ namespace BingoSignalRClient
                 int maxRetries = 5;
                 int retryCount = 0;
 
-               
-                 
+
+
 
                 // Step 3: Connect to SignalR
                 var connection = new HubConnectionBuilder()
@@ -111,11 +112,11 @@ namespace BingoSignalRClient
                 bool cardSelected = false;
                 Card selectedCard = null;
 
-       
+
                 // Handle "NumberSelected" event (user selects a number)
-              
+
                 // Handle "Timer" event (game countdown)
-             
+
                 // Step 6: Start SignalR connection
                 try
                 {
@@ -130,7 +131,7 @@ namespace BingoSignalRClient
                 }
 
                 // Keep the connection alive for the simulation
-                await Task.Delay(5);
+                await Task.Delay(TimeSpan.FromHours(1));
             }
             catch (HttpRequestException ex)
             {
