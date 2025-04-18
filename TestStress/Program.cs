@@ -45,22 +45,21 @@ namespace BingoSignalRClient
             //var semaphore = new SemaphoreSlim(100); // Limit to 1000 concurrent operations
             var tasks = new List<Task>();
 
-            for (int i = 0; i < USERS; i++)
+            Parallel.For(0, USERS, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount -1},async i =>
             {
                 int userIndex = i;
                 //await semaphore.WaitAsync(); // Wait for a slot to be available
 
-                tasks.Add(Task.Run(async () =>
+
+                try
                 {
-                    try
-                    {
-                        await SimulateUser(userIndex);
-                    }
-                    finally
-                    {
-                        //semaphore.Release(); // Release the slot when done
-                    }
-                }));
+                    await SimulateUser(userIndex);
+                }
+                finally
+                {
+                    //semaphore.Release(); // Release the slot when done
+                }
+
 
                 // Add slight delay between user spawns
                 await Task.Delay(10);
@@ -74,10 +73,10 @@ namespace BingoSignalRClient
                         LogMessage(LogLevel.Info, $"Error breakdown - API: {apiErrors}, SignalR: {signalRErrors}, Duplicates: {duplicateUsers}");
                     }
                 }
-            }
+            });
 
             // Wait for all tasks to complete
-            await Task.WhenAll(tasks);
+            //await Task.WhenAll(tasks);
 
             // Log final statistics
             LogMessage(LogLevel.Info, "Simulation completed");
