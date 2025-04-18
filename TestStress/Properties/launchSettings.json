@@ -1,7 +1,10 @@
 {
   "profiles": {
     "TestStress": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "environmentVariables": {
+        "users": "10000"
+      }
     },
     "Container (Dockerfile)": {
       "commandName": "Docker"

@@ -130,7 +130,7 @@ namespace BingoSignalRClient
                 }
 
                 // Keep the connection alive for the simulation
-                await Task.Delay(TimeSpan.FromHours(1));
+                await Task.Delay(5);
             }
             catch (HttpRequestException ex)
             {
