@@ -15,7 +15,7 @@ namespace BingoSignalRClient
     class Program
     {
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
-        private static int USERS =int.Parse(Environment.GetEnvironmentVariable("users")); // Number of concurrent simulated users
+        private static int USERS = int.Parse(Environment.GetEnvironmentVariable("users")); // Number of concurrent simulated users
         private static int fail = 0;
         private static int notif = 0;
         private static readonly object lockObject = new object();
@@ -76,16 +76,44 @@ namespace BingoSignalRClient
             {
                 Console.WriteLine($"User {userIndex}: Starting...");
 
-                // Step 1: Get codeClient
+                // Step 1: Get codeClient with retry mechanism
                 Console.WriteLine($"User {userIndex}: Getting codeClient...");
-                var content = new StringContent("", Encoding.UTF8, "application/json");
-                var response = await httpClient.PostAsync($"{BASE_URL}/api/Utilisateur?tokenUser=0", content);
-                response.EnsureSuccessStatusCode();
+                UserData userData = null;
+                int maxRetries = 5;
+                int retryCount = 0;
+                bool success = false;
 
-                var responseBody = await response.Content.ReadAsStringAsync();
-                var userData = JsonConvert.DeserializeObject<UserData>(responseBody);
+                while (!success && retryCount < maxRetries)
+                {
+                    try
+                    {
+                        var content = new StringContent("", Encoding.UTF8, "application/json");
+                        var response = await httpClient.PostAsync($"{BASE_URL}/api/Utilisateur?tokenUser=0", content);
+                        response.EnsureSuccessStatusCode();
 
-                Console.WriteLine($"User {userIndex}: Got user ID {userData.Id}");
+                        var responseBody = await response.Content.ReadAsStringAsync();
+                        userData = JsonConvert.DeserializeObject<UserData>(responseBody);
+
+                        if (userData == null || string.IsNullOrEmpty(userData.CodeClient))
+                        {
+                            throw new Exception("Received null or invalid user data");
+                        }
+
+                        success = true;
+                        Console.WriteLine($"User {userIndex}: Got user ID {userData.Id}");
+                    }
+                    catch (Exception ex)
+                    {
+                        retryCount++;
+                        Console.WriteLine($"User {userIndex}: Error getting codeClient: {ex.Message}. Retrying ({retryCount}/{maxRetries})...");
+                        await Task.Delay(50); // Wait before retrying
+                    }
+                }
+
+                if (!success)
+                {
+                    throw new Exception($"Failed to get codeClient after {maxRetries} retries");
+                }
 
                 // Step 2: Login
                 Console.WriteLine($"User {userIndex}: Logging in...");
@@ -127,6 +155,12 @@ namespace BingoSignalRClient
                         bool foundUniqueCards = false;
                         int maxRetries = 10;
                         int retryCount = 0;
+
+                        var randomTime = new Random();
+                        var randomDelayTime = randomTime.Next(300000); // Random delay up to 60 seconds
+
+                        // Use Task.Delay instead of setTimeout
+                        await Task.Delay(randomDelayTime);
 
                         while (!foundUniqueCards && retryCount < maxRetries)
                         {
@@ -193,7 +227,7 @@ namespace BingoSignalRClient
                             {
                                 retryCount++;
                                 Console.WriteLine($"User {userIndex}: Error getting cards: {ex.Message}. Retrying ({retryCount}/{maxRetries})...");
-                                await Task.Delay(500); // Wait a bit longer after an error
+                                await Task.Delay(50); // Wait a bit longer after an error
                             }
                         }
 
@@ -217,7 +251,7 @@ namespace BingoSignalRClient
                         {
                             var selectedId = cards[0].Id; // Select the first card for simplicity
                             var random = new Random();
-                            var randomDelay = random.Next(100); // Random delay up to 60 seconds
+                            var randomDelay = random.Next(300000); // Random delay up to 60 seconds
 
                             // Use Task.Delay instead of setTimeout
                             await Task.Delay(randomDelay);
@@ -247,35 +281,6 @@ namespace BingoSignalRClient
 
                     if (status == "emission_in_progress")
                     {
-                        var random = new Random();
-                        var randomDelay = random.Next(100); // Random delay up to 60 seconds
-
-                        // Use Task.Delay instead of setTimeout
-                        await Task.Delay(randomDelay);
-
-                        // try
-                        // {
-                        //     // Step 5: Get the selected card
-                        //     Console.WriteLine($"User {userIndex}: Getting selected card...");
-                        //     var selectedCardResponse = await httpClient.GetAsync($"{BASE_URL}/api/Card/GetSelectedCard");
-                        //     selectedCardResponse.EnsureSuccessStatusCode();
-
-                        //     var selectedCardResponseBody = await selectedCardResponse.Content.ReadAsStringAsync();
-                        //     var selectedCards = JsonConvert.DeserializeObject<List<Card>>(selectedCardResponseBody);
-
-                        //     if (selectedCards == null || selectedCards.Count == 0)
-                        //     {
-                        //         Console.WriteLine($"User {userIndex}: Warning - No selected cards returned from API");
-                        //         return;
-                        //     }
-
-                        //     selectedCard = selectedCards[0];
-                        //     Console.WriteLine($"User {userIndex}: Selected card loaded with ID {selectedCard.Id}");
-                        // }
-                        // catch (Exception ex)
-                        // {
-                        //     Console.WriteLine($"User {userIndex}: Error getting selected card: {ex.Message}");
-                        // }
                         selectedCard = cards[0];
                     }
                 });
