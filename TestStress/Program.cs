@@ -1,14 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
+﻿using Microsoft.AspNetCore.SignalR.Client;
+using Newtonsoft.Json;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.SignalR.Client;
-using Newtonsoft.Json;
 
 namespace BingoSignalRClient
 {
