@@ -1,54 +1,39 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
+﻿using Microsoft.AspNetCore.SignalR.Client;
+using Newtonsoft.Json;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using System.IO;
-using Microsoft.AspNetCore.SignalR.Client;
-using Newtonsoft.Json;
-using Microsoft.AspNetCore.SignalR;
 
 namespace BingoSignalRClient
 {
     class Program
     {
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
-        public static int USERS = int.Parse(Environment.GetEnvironmentVariable("users")); // Number of concurrent simulated users
+        private static int USERS = int.Parse(Environment.GetEnvironmentVariable("users")); // Number of concurrent simulated users
         private static int fail = 0;
         private static int notif = 0;
-        private static int duplicateUsers = 0;
-        private static int apiErrors = 0;
-        private static int signalRErrors = 0;
         private static readonly object lockObject = new object();
 
-        // Track user IDs to ensure uniqueness
-        private static readonly HashSet<int> usedUserIds = new HashSet<int>();
-        private static readonly object userIdsLock = new object();
+        // Track card IDs to detect duplicates across users
+        private static readonly Dictionary<int, int> cardIdToUserMap = new Dictionary<int, int>();
+        private static readonly object cardMapLock = new object();
 
-        // Console logging only
-        private static readonly object consoleLock = new object();
-
-        // Log levels
-        private enum LogLevel { Debug, Info, Warning, Error, Critical }
+        // Track selected numbers for each user to prevent duplicate selections
+        private static readonly Dictionary<int, HashSet<int>> userSelectedNumbers = new Dictionary<int, HashSet<int>>();
+        private static readonly object selectedNumbersLock = new object();
 
         static async Task Main(string[] args)
         {
-            // Start simulation with console message
-
-            LogMessage(LogLevel.Info, "Starting Bingo SignalR Client Simulation");
+            Console.WriteLine("Starting Bingo SignalR Client Simulation");
 
             // Create a semaphore to limit concurrent connections if needed
-            //var semaphore = new SemaphoreSlim(100); // Limit to 1000 concurrent operations
+            var semaphore = new SemaphoreSlim(USERS); // Limit to 1000 concurrent operations
             var tasks = new List<Task>();
 
             for (int i = 0; i < USERS; i++)
             {
                 int userIndex = i;
-                //await semaphore.WaitAsync(); // Wait for a slot to be available
+                await semaphore.WaitAsync(); // Wait for a slot to be available
 
                 tasks.Add(Task.Run(async () =>
                 {
@@ -58,7 +43,7 @@ namespace BingoSignalRClient
                     }
                     finally
                     {
-                        //semaphore.Release(); // Release the slot when done
+                        semaphore.Release(); // Release the slot when done
                     }
                 }));
 
@@ -67,22 +52,14 @@ namespace BingoSignalRClient
 
                 lock (lockObject)
                 {
-                    if (i % 100 == 0 || i == USERS - 1) // Log every 100 users and at the end
-                    {
-                        LogMessage(LogLevel.Info, $"Progress: {i + 1}/{USERS} users started");
-                        LogMessage(LogLevel.Info, $"Current stats - Failures: {fail}, Notifications: {notif}");
-                        LogMessage(LogLevel.Info, $"Error breakdown - API: {apiErrors}, SignalR: {signalRErrors}, Duplicates: {duplicateUsers}");
-                    }
+                    Console.WriteLine($"Fail: {fail}");
+                    Console.WriteLine($"Notifications: {notif}");
                 }
             }
 
             // Wait for all tasks to complete
             await Task.WhenAll(tasks);
-
-            // Log final statistics
-            LogMessage(LogLevel.Info, "Simulation completed");
-            LogMessage(LogLevel.Info, $"Final statistics: Users: {USERS}, Failures: {fail}, Notifications: {notif}");
-            LogMessage(LogLevel.Info, $"Error breakdown: API Errors: {apiErrors}, SignalR Errors: {signalRErrors}, Duplicate Users: {duplicateUsers}");
+            Console.WriteLine("Simulation completed");
         }
 
         private static async Task SimulateUser(int userIndex)
@@ -92,75 +69,259 @@ namespace BingoSignalRClient
 
             try
             {
-                LogMessage(LogLevel.Info, $"User {userIndex}: Starting...");
+                Console.WriteLine($"User {userIndex}: Starting...");
 
-                // Step 1: Get codeClient with uniqueness check
-                UserData userData = null;
-                bool isUniqueUser = false;
-                int maxRetries = 5;
-                int retryCount = 0;
+                // Step 1: Get codeClient
+                var content = new StringContent("", Encoding.UTF8, "application/json");
+                var response = await httpClient.PostAsync($"{BASE_URL}/api/Utilisateur?tokenUser=0", content);
+                response.EnsureSuccessStatusCode();
 
+                var responseBody = await response.Content.ReadAsStringAsync();
+                var userData = JsonConvert.DeserializeObject<UserData>(responseBody);
 
+                Console.WriteLine($"User {userIndex}: Got user ID {userData.Id}");
 
+                // Step 2: Login
+                var loginData = new { id = userData.Id, codeClient = userData.CodeClient };
+                var loginContent = new StringContent(JsonConvert.SerializeObject(loginData), Encoding.UTF8, "application/json");
+                var loginResponse = await httpClient.PostAsync($"{BASE_URL}/api/Utilisateur/login", loginContent);
+                loginResponse.EnsureSuccessStatusCode();
+
+                var loginResponseBody = await loginResponse.Content.ReadAsStringAsync();
+                var tokenData = JsonConvert.DeserializeObject<TokenData>(loginResponseBody);
+                string token = tokenData.AccessToken;
+
+                // Update headers with token
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
                 // Step 3: Connect to SignalR
                 var connection = new HubConnectionBuilder()
-                    .WithUrl($"{BASE_URL}/api/notificationsHub")
+                    .WithUrl($"{BASE_URL}/api/notificationsHub", options =>
+                    {
+                        options.AccessTokenProvider = () => Task.FromResult(token);
+                    })
                     .WithAutomaticReconnect()
                     .Build();
 
                 bool cardSelected = false;
                 Card selectedCard = null;
 
+                // Handle "status" event (game progress)
+                connection.On<string>("status", async (status) =>
+                {
+                    Console.WriteLine($"User {userIndex}: SignalR status = {status}");
+
+                    if (status == "distribution_in_progress" && !cardSelected)
+                    {
+                        // Step 4: Get Cards
+                        bool foundUniqueCards = false;
+                        List<Card> cards = null;
+                        int maxRetries = 5;
+                        int retryCount = 0;
+
+                        while (!foundUniqueCards && retryCount < maxRetries)
+                        {
+                            var cardsResponse = await httpClient.GetAsync($"{BASE_URL}/api/Card");
+                            cardsResponse.EnsureSuccessStatusCode();
+
+                            var cardsResponseBody = await cardsResponse.Content.ReadAsStringAsync();
+                            cards = JsonConvert.DeserializeObject<List<Card>>(cardsResponseBody);
+
+                            // Check if these cards have been assigned to other users
+                            bool hasDuplicateCards = false;
+                            string duplicateDetails = "";
+                            Dictionary<int, int> tempCardAssignments = new Dictionary<int, int>();
+
+                            lock (cardMapLock)
+                            {
+                                foreach (var card in cards ?? new List<Card>())
+                                {
+                                    if (cardIdToUserMap.TryGetValue(card.Id, out int existingUserId))
+                                    {
+                                        hasDuplicateCards = true;
+                                        duplicateDetails += $"Card {card.Id} already assigned to user {existingUserId}. ";
+                                    }
+                                    else
+                                    {
+                                        // Track this card as a potential assignment
+                                        tempCardAssignments[card.Id] = userData.Id;
+                                    }
+                                }
+
+                                if (!hasDuplicateCards)
+                                {
+                                    // No duplicates found, record these cards as assigned to this user
+                                    foreach (var entry in tempCardAssignments)
+                                    {
+                                        cardIdToUserMap[entry.Key] = entry.Value;
+                                    }
+                                    foundUniqueCards = true;
+                                }
+                                else
+                                {
+                                    retryCount++;
+                                    Console.WriteLine($"WARNING: User {userIndex} with user ID {userData.Id}: Received duplicate cards! {duplicateDetails} Retrying ({retryCount}/{maxRetries})...");
+                                    hasDuplicateCards = true; // Set flag to use outside lock
+                                }
+                            }
+
+                            // Wait a bit before retrying if duplicates were found
+                            if (hasDuplicateCards)
+                            {
+                                await Task.Delay(10);
+                            }
+                        }
+
+                        if (!foundUniqueCards)
+                        {
+                            Console.WriteLine($"ERROR: User {userIndex} with user ID {userData.Id}: Could not get unique cards after {maxRetries} retries. Proceeding with potentially duplicate cards.");
+
+                            // As a last resort, record these cards as assigned to this user
+                            lock (cardMapLock)
+                            {
+                                foreach (var card in cards ?? new List<Card>())
+                                {
+                                    cardIdToUserMap[card.Id] = userData.Id;
+                                }
+                            }
+                        }
+
+                        Console.WriteLine($"User {userIndex} with user ID {userData.Id}: Got {cards?.Count ?? 0} cards with ids: {string.Join(", ", cards?.Select(c => c.Id) ?? new List<int>())}");
+
+                        if (cards?.Count > 0)
+                        {
+                            var selectedId = cards[0].Id; // Select the first card for simplicity
+                            var random = new Random();
+                            var randomDelay = random.Next(100); // Random delay up to 60 seconds
+
+                            // Use Task.Delay instead of setTimeout
+                            await Task.Delay(randomDelay);
+
+                            try
+                            {
+                                var selectCardData = new { id = selectedId };
+                                var selectCardContent = new StringContent(
+                                    JsonConvert.SerializeObject(selectCardData),
+                                    Encoding.UTF8,
+                                    "application/json"
+                                );
+
+                                var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
+                                selectCardResponse.EnsureSuccessStatusCode();
+
+                                Console.WriteLine($"User {userIndex}: Card selected after {randomDelay}ms");
+                                Interlocked.Increment(ref notif);
+                                cardSelected = true;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"User {userIndex}: Failed to select card: {ex.Message}");
+                            }
+                        }
+                    }
+
+                    if (status == "emission_in_progress")
+                    {
+                        // Step 5: Get the selected card
+                        var selectedCardResponse = await httpClient.GetAsync($"{BASE_URL}/api/Card/GetSelectedCard");
+                        selectedCardResponse.EnsureSuccessStatusCode();
+
+                        var selectedCardResponseBody = await selectedCardResponse.Content.ReadAsStringAsync();
+                        var selectedCards = JsonConvert.DeserializeObject<List<Card>>(selectedCardResponseBody);
+
+                        if (selectedCards.Count > 0)
+                        {
+                            selectedCard = selectedCards[0];
+                            Console.WriteLine($"User {userIndex}: Selected card loaded");
+                        }
+                    }
+                });
 
                 // Handle "NumberSelected" event (user selects a number)
+                connection.On<int>("NumberSelected", async (number) =>
+                {
+                    if (selectedCard == null) return;
+
+                    // Check if this number has already been selected by this user
+                    bool alreadySelected = false;
+                    lock (selectedNumbersLock)
+                    {
+                        // Initialize the set if it doesn't exist for this user
+                        if (!userSelectedNumbers.ContainsKey(userData.Id))
+                        {
+                            userSelectedNumbers[userData.Id] = new HashSet<int>();
+                        }
+
+                        // Check if this number has already been selected
+                        if (userSelectedNumbers[userData.Id].Contains(number))
+                        {
+                            alreadySelected = true;
+                            Console.WriteLine($"User {userIndex}: Number {number} already selected previously");
+                        }
+                    }
+
+                    // Skip if already selected
+                    if (alreadySelected) return;
+
+                    // Flatten the 2D array of numbers
+                    var flatNumbers = selectedCard.Cards.SelectMany(row => row).ToList();
+
+                    if (flatNumbers.Contains(number))
+                    {
+                        int score = 10; // or based on some logic
+                        var random = new Random();
+                        var randomDelay = random.Next(100); // Random delay up to 100ms
+
+                        await Task.Delay(randomDelay);
+
+                        try
+                        {
+                            var numberData = new[] { number, score };
+                            var numberContent = new StringContent(
+                                JsonConvert.SerializeObject(numberData),
+                                Encoding.UTF8,
+                                "application/json"
+                            );
+
+                            var numberResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
+                            numberResponse.EnsureSuccessStatusCode();
+
+                            // Mark this number as selected for this user
+                            lock (selectedNumbersLock)
+                            {
+                                userSelectedNumbers[userData.Id].Add(number);
+                            }
+
+                            Console.WriteLine($"User {userIndex}: Sent selected number {number} after {randomDelay}ms");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"User {userIndex}: Error sending selected number: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"User {userIndex}: Number {number} not in card");
+                    }
+                });
 
                 // Handle "Timer" event (game countdown)
+                connection.On<int>("Timer", (timeLeft) =>
+                {
+                    Console.WriteLine($"User {userIndex}: Timer = {timeLeft}");
+                });
 
                 // Step 6: Start SignalR connection
-                try
-                {
-                    await connection.StartAsync();
-                    LogMessage(LogLevel.Info, $"User {userIndex}: SignalR connection started");
-                }
-                catch (Exception ex)
-                {
-                    LogMessage(LogLevel.Error, $"User {userIndex}: Failed to start SignalR connection: {ex.Message}");
-                    Interlocked.Increment(ref signalRErrors);
-                    throw; // Rethrow to be caught by the outer catch block
-                }
+                await connection.StartAsync();
+                Console.WriteLine($"User {userIndex}: SignalR connection started");
 
                 // Keep the connection alive for the simulation
-                await Task.Delay(TimeSpan.FromHours(3));
-            }
-            catch (HttpRequestException ex)
-            {
-                LogMessage(LogLevel.Error, $"User {userIndex} API error: {ex.Message}");
-                Interlocked.Increment(ref fail);
-                Interlocked.Increment(ref apiErrors);
-            }
-            catch (HubException ex)
-            {
-                LogMessage(LogLevel.Error, $"User {userIndex} SignalR error: {ex.Message}");
-                Interlocked.Increment(ref fail);
-                Interlocked.Increment(ref signalRErrors);
+                await Task.Delay(TimeSpan.FromHours(24));
             }
             catch (Exception ex)
             {
-                LogMessage(LogLevel.Error, $"User {userIndex} error: {ex.Message}");
+                Console.WriteLine($"User {userIndex} error: {ex.Message}");
                 Interlocked.Increment(ref fail);
-            }
-        }
-        // Helper method for logging to console only
-        private static void LogMessage(LogLevel level, string message)
-        {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            var logMessage = $"[{timestamp}] [{level}] {message}";
-
-            // Write to console - thread-safe with lock
-            lock (consoleLock)
-            {
-                Console.WriteLine(logMessage);
             }
         }
     }
