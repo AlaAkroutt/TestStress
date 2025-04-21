@@ -17,9 +17,9 @@ namespace BingoSignalRClient
     class Program
     {
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
-        private const int CARD_DELAY = 3600000; // 1 hour
-        private const int SELECT_DELAY = 3600000; // 1 hour
-        private const int MAX_TIMER = 20;
+        private static int CARD_DELAY = int.Parse(Environment.GetEnvironmentVariable("CARD_DELAY")); // 1 hour
+        private static int SELECT_DELAY = int.Parse(Environment.GetEnvironmentVariable("SELECT_DELAY")); // 1 hour
+        private static int MAX_TIMER = int.Parse(Environment.GetEnvironmentVariable("MAX_TIMER"));
 
         private static int fail = 0;
         private static int notif = 0;
