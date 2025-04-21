@@ -1,15 +1,26 @@
-﻿using Microsoft.AspNetCore.SignalR.Client;
-using Newtonsoft.Json;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using System.IO;
+using System.IdentityModel.Tokens.Jwt;
+using Microsoft.AspNetCore.SignalR.Client;
+using Newtonsoft.Json;
 
 namespace BingoSignalRClient
 {
     class Program
     {
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
-        private static int USERS = int.Parse(Environment.GetEnvironmentVariable("users")); // Number of concurrent simulated users
+        private const int CARD_DELAY = 3600000; // 1 hour
+        private const int SELECT_DELAY = 3600000; // 1 hour
+        private const int MAX_TIMER = 20;
+
         private static int fail = 0;
         private static int notif = 0;
         private static readonly object lockObject = new object();
@@ -20,16 +31,46 @@ namespace BingoSignalRClient
 
         // Track selected numbers for each user to prevent duplicate selections
         private static readonly Dictionary<int, HashSet<int>> userSelectedNumbers = new Dictionary<int, HashSet<int>>();
+        private static readonly Dictionary<int, HashSet<int>> pendingNumberSelections = new Dictionary<int, HashSet<int>>();
         private static readonly object selectedNumbersLock = new object();
+
+        // List to store user tokens loaded from file
+        private static List<UserToken> userTokens = new List<UserToken>();
+
+        // Path to the tokens file (default value, can be overridden by command-line argument)
+        private static string tokensFilePath = "tokens.json";
 
         static async Task Main(string[] args)
         {
             Console.WriteLine("Starting Bingo SignalR Client Simulation");
 
+            // Check if a tokens file was specified as a command-line argument
+            if (args.Length > 0)
+            {
+                tokensFilePath = args[0];
+                Console.WriteLine($"Using tokens file: {tokensFilePath}");
+            }
+            else
+            {
+                Console.WriteLine($"No tokens file specified, using default: {tokensFilePath}");
+            }
+
+            // Load tokens from file
+            LoadTokensFromFile();
+
+            int userCount = userTokens.Count;
+            Console.WriteLine($"Loaded {userCount} user tokens from file");
+
+            if (userCount == 0)
+            {
+                Console.WriteLine("No tokens found in the file. Please add tokens to tokens.json");
+                return;
+            }
+
             // Create a list to hold all user simulation tasks
             var tasks = new List<Task>();
 
-            for (int i = 0; i < USERS; i++)
+            for (int i = 0; i < userCount; i++)
             {
                 int userIndex = i;
 
@@ -61,6 +102,69 @@ namespace BingoSignalRClient
             Console.WriteLine("Simulation completed");
         }
 
+        // Load tokens from the JSON file
+        private static void LoadTokensFromFile()
+        {
+            try
+            {
+                string filePath = Path.Combine(Directory.GetCurrentDirectory(), tokensFilePath);
+                if (File.Exists(filePath))
+                {
+                    string json = File.ReadAllText(filePath);
+
+                    // Parse tokens as a simple array of strings
+                    var tokenStrings = JsonConvert.DeserializeObject<List<string>>(json);
+
+                    if (tokenStrings != null && tokenStrings.Count > 0)
+                    {
+                        Console.WriteLine($"Found {tokenStrings.Count} tokens in file");
+
+                        foreach (var tokenString in tokenStrings)
+                        {
+                            try
+                            {
+                                // Parse the JWT token to extract the user ID
+                                var handler = new JwtSecurityTokenHandler();
+                                var token = handler.ReadJwtToken(tokenString);
+
+                                // Try to get the user ID from the token claims
+                                var userIdClaim = token.Claims.FirstOrDefault(c => c.Type == "IdUser");
+
+                                if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+                                {
+                                    userTokens.Add(new UserToken
+                                    {
+                                        UserId = userId,
+                                        AccessToken = tokenString
+                                    });
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"Warning: Could not extract user ID from token: {tokenString.Substring(0, 20)}...");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Error parsing token: {ex.Message}");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("No tokens found in the file or invalid format");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"Tokens file not found at {filePath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading tokens from file: {ex.Message}");
+            }
+        }
+
         private static async Task SimulateUser(int userIndex)
         {
             using var httpClient = new HttpClient();
@@ -68,58 +172,17 @@ namespace BingoSignalRClient
 
             try
             {
-                Console.WriteLine($"User {userIndex}: Starting...");
-
-                // Step 1: Get codeClient with retry mechanism
-                Console.WriteLine($"User {userIndex}: Getting codeClient...");
-                UserData userData = null;
-                int maxRetries = 5;
-                int retryCount = 0;
-                bool success = false;
-
-                while (!success && retryCount < maxRetries)
+                // Get the user token from the loaded list
+                if (userIndex >= userTokens.Count)
                 {
-                    try
-                    {
-                        var content = new StringContent("", Encoding.UTF8, "application/json");
-                        var response = await httpClient.PostAsync($"{BASE_URL}/api/Utilisateur?tokenUser=0", content);
-                        response.EnsureSuccessStatusCode();
-
-                        var responseBody = await response.Content.ReadAsStringAsync();
-                        userData = JsonConvert.DeserializeObject<UserData>(responseBody);
-
-                        if (userData == null || string.IsNullOrEmpty(userData.CodeClient))
-                        {
-                            throw new Exception("Received null or invalid user data");
-                        }
-
-                        success = true;
-                        Console.WriteLine($"User {userIndex}: Got user ID {userData.Id}");
-                    }
-                    catch (Exception ex)
-                    {
-                        retryCount++;
-                        Console.WriteLine($"User {userIndex}: Error getting codeClient: {ex.Message}. Retrying ({retryCount}/{maxRetries})...");
-                        await Task.Delay(50); // Wait before retrying
-                    }
+                    throw new Exception($"User index {userIndex} exceeds available tokens count {userTokens.Count}");
                 }
 
-                if (!success)
-                {
-                    throw new Exception($"Failed to get codeClient after {maxRetries} retries");
-                }
+                var userToken = userTokens[userIndex];
+                int userId = userToken.UserId;
+                string token = userToken.AccessToken;
 
-                // Step 2: Login
-                Console.WriteLine($"User {userIndex}: Logging in...");
-                var loginData = new { id = userData.Id, codeClient = userData.CodeClient };
-                var loginContent = new StringContent(JsonConvert.SerializeObject(loginData), Encoding.UTF8, "application/json");
-                var loginResponse = await httpClient.PostAsync($"{BASE_URL}/api/Utilisateur/login", loginContent);
-                loginResponse.EnsureSuccessStatusCode();
-
-                var loginResponseBody = await loginResponse.Content.ReadAsStringAsync();
-                Console.WriteLine($"User {userIndex}: Logged in");
-                var tokenData = JsonConvert.DeserializeObject<TokenData>(loginResponseBody);
-                string token = tokenData.AccessToken;
+                Console.WriteLine($"User {userIndex}: Starting with userId {userId} and token...");
 
                 // Update headers with token
                 httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -151,7 +214,7 @@ namespace BingoSignalRClient
                         int retryCount = 0;
 
                         var randomTime = new Random();
-                        var randomDelayTime = randomTime.Next(300000); // Random delay up to 60 seconds
+                        var randomDelayTime = randomTime.Next(CARD_DELAY); // Random delay up to 1 hour
 
                         // Use Task.Delay instead of setTimeout
                         await Task.Delay(randomDelayTime);
@@ -190,7 +253,7 @@ namespace BingoSignalRClient
                                         else
                                         {
                                             // Track this card as a potential assignment
-                                            tempCardAssignments[card.Id] = userData.Id;
+                                            tempCardAssignments[card.Id] = userId;
                                         }
                                     }
 
@@ -206,7 +269,7 @@ namespace BingoSignalRClient
                                     else
                                     {
                                         retryCount++;
-                                        Console.WriteLine($"WARNING: User {userIndex} with user ID {userData.Id}: Received duplicate cards! {duplicateDetails} Retrying ({retryCount}/{maxRetries})...");
+                                        Console.WriteLine($"WARNING: User {userIndex} with user ID {userId}: Received duplicate cards! {duplicateDetails} Retrying ({retryCount}/{maxRetries})...");
                                         hasDuplicateCards = true; // Set flag to use outside lock
                                     }
                                 }
@@ -227,25 +290,25 @@ namespace BingoSignalRClient
 
                         if (!foundUniqueCards)
                         {
-                            Console.WriteLine($"ERROR: User {userIndex} with user ID {userData.Id}: Could not get unique cards after {maxRetries} retries. Proceeding with potentially duplicate cards.");
+                            Console.WriteLine($"ERROR: User {userIndex} with user ID {userId}: Could not get unique cards after {maxRetries} retries. Proceeding with potentially duplicate cards.");
 
                             // As a last resort, record these cards as assigned to this user
                             lock (cardMapLock)
                             {
                                 foreach (var card in cards ?? new List<Card>())
                                 {
-                                    cardIdToUserMap[card.Id] = userData.Id;
+                                    cardIdToUserMap[card.Id] = userId;
                                 }
                             }
                         }
 
-                        Console.WriteLine($"User {userIndex} with user ID {userData.Id}: Got {cards?.Count ?? 0} cards with ids: {string.Join(", ", cards?.Select(c => c.Id) ?? new List<int>())}");
+                        Console.WriteLine($"User {userIndex} with user ID {userId}: Got {cards?.Count ?? 0} cards with ids: {string.Join(", ", cards?.Select(c => c.Id) ?? new List<int>())}");
 
                         if (cards?.Count > 0)
                         {
                             var selectedId = cards[0].Id; // Select the first card for simplicity
                             var random = new Random();
-                            var randomDelay = random.Next(300000); // Random delay up to 60 seconds
+                            var randomDelay = random.Next(SELECT_DELAY); // Random delay up to 1 hour
 
                             // Use Task.Delay instead of setTimeout
                             await Task.Delay(randomDelay);
@@ -279,66 +342,42 @@ namespace BingoSignalRClient
                     }
                 });
 
-                // Handle "NumberSelected" event (user selects a number)
-                connection.On<int>("NumberSelected", async (number) =>
+                // Handle "NumberSelected" event (user receives notification of a number to select)
+                connection.On<int>("NumberSelected", (number) =>
                 {
                     if (selectedCard == null) return;
 
-                    // Check if this number has already been selected by this user
-                    bool alreadySelected = false;
-                    lock (selectedNumbersLock)
-                    {
-                        // Initialize the set if it doesn't exist for this user
-                        if (!userSelectedNumbers.ContainsKey(userData.Id))
-                        {
-                            userSelectedNumbers[userData.Id] = new HashSet<int>();
-                        }
-
-                        // Check if this number has already been selected
-                        if (userSelectedNumbers[userData.Id].Contains(number))
-                        {
-                            alreadySelected = true;
-                            Console.WriteLine($"User {userIndex}: Number {number} already selected previously");
-                        }
-                    }
-
-                    // Skip if already selected
-                    if (alreadySelected) return;
-
-                    // Flatten the 2D array of numbers
+                    // Check if this number is in the user's card
                     var flatNumbers = selectedCard.Cards.SelectMany(row => row).ToList();
 
                     if (flatNumbers.Contains(number))
                     {
-                        int score = 10; // or based on some logic
-                        var random = new Random();
-                        var randomDelay = random.Next(100); // Random delay up to 100ms
+                        Console.WriteLine($"User {userIndex}: Number {number} is in card");
 
-                        await Task.Delay(randomDelay);
-
-                        try
+                        // Store the number to be selected during the Timer event
+                        lock (selectedNumbersLock)
                         {
-                            var numberData = new[] { number, score };
-                            var numberContent = new StringContent(
-                                JsonConvert.SerializeObject(numberData),
-                                Encoding.UTF8,
-                                "application/json"
-                            );
-
-                            var numberResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
-                            numberResponse.EnsureSuccessStatusCode();
-
-                            // Mark this number as selected for this user
-                            lock (selectedNumbersLock)
+                            // Initialize the set if it doesn't exist for this user
+                            if (!userSelectedNumbers.ContainsKey(userId))
                             {
-                                userSelectedNumbers[userData.Id].Add(number);
+                                userSelectedNumbers[userId] = new HashSet<int>();
                             }
 
-                            Console.WriteLine($"User {userIndex}: Sent selected number {number} after {randomDelay}ms");
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"User {userIndex}: Error sending selected number: {ex.Message}");
+                            // Check if this number has already been selected by this user
+                            if (userSelectedNumbers[userId].Contains(number))
+                            {
+                                Console.WriteLine($"User {userIndex}: Number {number} was already selected by this user");
+                            }
+                            else
+                            {
+                                // Store the number as pending selection
+                                if (!pendingNumberSelections.ContainsKey(userId))
+                                {
+                                    pendingNumberSelections[userId] = new HashSet<int>();
+                                }
+                                pendingNumberSelections[userId].Add(number);
+                                Console.WriteLine($"User {userIndex}: Number {number} queued for selection during Timer event");
+                            }
                         }
                     }
                     else
@@ -348,9 +387,95 @@ namespace BingoSignalRClient
                 });
 
                 // Handle "Timer" event (game countdown)
-                connection.On<int>("Timer", (timeLeft) =>
+                connection.On<int>("Timer", async (timeLeft) =>
                 {
                     Console.WriteLine($"User {userIndex}: Timer = {timeLeft}");
+
+                    // Only attempt to select numbers when we have a selected card
+                    if (selectedCard != null)
+                    {
+                        // Use timeLeft to distribute the load
+                        // For example, some users will select at timeLeft = 10, others at 9, etc.
+                        // This creates a more natural distribution based on the user's index
+                        int userSpecificTriggerTime = (userIndex % MAX_TIMER) + 1; // Distribute across 1-5 seconds
+
+                        if (timeLeft == userSpecificTriggerTime)
+                        {
+                            // Process any pending number selections
+                            HashSet<int> pendingNumbers = null;
+
+                            lock (selectedNumbersLock)
+                            {
+                                // Check if there are any pending numbers to select
+                                if (pendingNumberSelections.TryGetValue(userId, out pendingNumbers) && pendingNumbers.Count > 0)
+                                {
+                                    // Make a copy of the pending numbers to process outside the lock
+                                    pendingNumbers = new HashSet<int>(pendingNumbers);
+                                    // Clear the pending selections as we're about to process them
+                                    pendingNumberSelections[userId].Clear();
+                                }
+                            }
+
+                            if (pendingNumbers != null && pendingNumbers.Count > 0)
+                            {
+                                var random = new Random();
+                                var randomDelay = random.Next(100); // Random delay up to 100ms
+
+                                await Task.Delay(randomDelay);
+
+                                foreach (int numberToSelect in pendingNumbers)
+                                {
+                                    // Check if this number has already been selected
+                                    bool alreadySelected = false;
+
+                                    lock (selectedNumbersLock)
+                                    {
+                                        if (!userSelectedNumbers.ContainsKey(userId))
+                                        {
+                                            userSelectedNumbers[userId] = new HashSet<int>();
+                                        }
+
+                                        alreadySelected = userSelectedNumbers[userId].Contains(numberToSelect);
+                                    }
+
+                                    if (!alreadySelected)
+                                    {
+                                        int score = 10; // or based on some logic
+
+                                        try
+                                        {
+                                            var numberData = new[] { numberToSelect, score };
+                                            var numberContent = new StringContent(
+                                                JsonConvert.SerializeObject(numberData),
+                                                Encoding.UTF8,
+                                                "application/json"
+                                            );
+
+                                            var numberResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
+                                            numberResponse.EnsureSuccessStatusCode();
+
+                                            // Mark this number as selected for this user
+                                            lock (selectedNumbersLock)
+                                            {
+                                                userSelectedNumbers[userId].Add(numberToSelect);
+                                            }
+
+                                            Console.WriteLine($"User {userIndex}: Sent selected number {numberToSelect} at timeLeft={timeLeft} after {randomDelay}ms");
+                                            Interlocked.Increment(ref notif);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.WriteLine($"User {userIndex}: Error sending selected number: {ex.Message}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine($"User {userIndex}: Number {numberToSelect} already selected, skipping");
+                                    }
+                                }
+                            }
+                        }
+                    }
                 });
 
                 // Step 6: Start SignalR connection
@@ -369,13 +494,13 @@ namespace BingoSignalRClient
     }
 
     // Data models
-    public class UserData
+    public class UserToken
     {
-        [JsonProperty("id")]
-        public int Id { get; set; }
+        [JsonProperty("userId")]
+        public int UserId { get; set; }
 
-        [JsonProperty("codeClient")]
-        public string CodeClient { get; set; }
+        [JsonProperty("accessToken")]
+        public string AccessToken { get; set; }
     }
 
     public class TokenData
