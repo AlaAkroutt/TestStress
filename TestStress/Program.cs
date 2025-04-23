@@ -34,9 +34,6 @@ namespace BingoSignalRClient
         // Semaphore to limit concurrent card operations to 500 at a time
         private static readonly SemaphoreSlim cardOperationsSemaphore = new SemaphoreSlim(semaphore, semaphore);
 
-        // Static flag to control whether distribution should proceed
-
-
         // List to store user tokens loaded from file
         private static List<UserToken> userTokens = new List<UserToken>();
 
@@ -100,8 +97,6 @@ namespace BingoSignalRClient
                 }
             }
 
-            // Start a separate task to wait for user input to resume distribution
-        
             // Wait for all tasks to complete
             await Task.WhenAll(tasks);
             Console.WriteLine("Simulation completed");
@@ -454,13 +449,9 @@ namespace BingoSignalRClient
                 // Handle "status" event (game progress)
                 connection.On<string>("status", async (status) =>
                 {
-                    if( !cardSelected)
-                    {
-
-                   
                     Console.WriteLine($"User {userIndex}: SignalR status = {status}");
 
-                    if (status == "distribution_in_progress" )
+                    if (status == "distribution_in_progress" && !cardSelected)
                     {
                         // Step 4: Get Cards
                         Console.WriteLine($"User {userIndex}: Getting cards...");
@@ -474,13 +465,7 @@ namespace BingoSignalRClient
                         // Use Task.Delay instead of setTimeout
                         //await Task.Delay(randomDelayTime);
 
-                        // Wait for user input before proceeding with distribution
-                        Console.WriteLine($"User {userIndex}: Waiting for user input to proceed with card operations...");
-
-                        // Poll the allowDistribution flag until it becomes true
-                      
-
-                        // Wait for semaphore to limit concurrent card operations
+                        // Wait for semaphore to limit concurrent card operations to 500
                         await cardOperationsSemaphore.WaitAsync();
                         Console.WriteLine($"User {userIndex}: Acquired semaphore for card operations");
 
@@ -590,7 +575,7 @@ namespace BingoSignalRClient
                                 var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
                                 selectCardResponse.EnsureSuccessStatusCode();
 
-                                Console.WriteLine($"User {userIndex}: Card selected");
+                                Console.WriteLine($"User {userIndex}: Card selected after ms");
                                 Interlocked.Increment(ref notif);
                                 cardSelected = true;
                             }
@@ -608,7 +593,6 @@ namespace BingoSignalRClient
                     if (status == "emission_in_progress")
                     {
                         selectedCard = cards[0];
-                        }
                     }
                 });
 
