@@ -575,7 +575,7 @@ namespace BingoSignalRClient
                                 var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
                                 selectCardResponse.EnsureSuccessStatusCode();
 
-                                Console.WriteLine($"User {userIndex}: Card selected after {randomDelay}ms");
+                                Console.WriteLine($"User {userIndex}: Card selected after ms");
                                 Interlocked.Increment(ref notif);
                                 cardSelected = true;
                             }
