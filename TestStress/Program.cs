@@ -12,27 +12,23 @@ using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.SignalR.Client;
 using Newtonsoft.Json;
 
-namespace BingoSignalRClient
+namespace TestStress
 {
     class Program
     {
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
-        private static int CARD_DELAY = int.Parse(Environment.GetEnvironmentVariable("CARD_DELAY")); // 1 hour
+        private static int CARD_DELAY =int.Parse( Environment.GetEnvironmentVariable("CARD_DELAY")); // 1 hour
         private static int SELECT_DELAY = int.Parse(Environment.GetEnvironmentVariable("SELECT_DELAY")); // 1 hour
         private static int MAX_TIMER = int.Parse(Environment.GetEnvironmentVariable("MAX_TIMER"));
+        private static int USER_DELAY = int.Parse(Environment.GetEnvironmentVariable("delay"));
 
         private static int fail = 0;
         private static int notif = 0;
         private static readonly object lockObject = new object();
 
-        // Track card IDs to detect duplicates across users
+        // Track card IDs to detect duplicates across users (needs to be shared)
         private static readonly Dictionary<int, int> cardIdToUserMap = new Dictionary<int, int>();
         private static readonly object cardMapLock = new object();
-
-        // Track selected numbers for each user to prevent duplicate selections
-        private static readonly Dictionary<int, HashSet<int>> userSelectedNumbers = new Dictionary<int, HashSet<int>>();
-        private static readonly Dictionary<int, HashSet<int>> pendingNumberSelections = new Dictionary<int, HashSet<int>>();
-        private static readonly object selectedNumbersLock = new object();
 
         // List to store user tokens loaded from file
         private static List<UserToken> userTokens = new List<UserToken>();
@@ -88,7 +84,7 @@ namespace BingoSignalRClient
                 }));
 
                 // Add slight delay between user spawns
-                await Task.Delay(int.Parse(Environment.GetEnvironmentVariable("delay")));
+                await Task.Delay(USER_DELAY);
 
                 lock (lockObject)
                 {
@@ -165,8 +161,254 @@ namespace BingoSignalRClient
             }
         }
 
+        // Calculate score for a selected number based on the card and currently selected numbers
+        private static int CalculateScore(Card card, HashSet<int> selectedNumbers, int newNumber)
+        {
+            // For regular number selection, we'll use all conditions
+            string condition = "line,column,diag";
+            return CalculateScore(card, selectedNumbers, newNumber, condition);
+        }
+
+        // Calculate score for a selected number based on the card, selected numbers, and specific condition
+        private static int CalculateScore(Card card, HashSet<int> selectedNumbers, int newNumber, string condition)
+        {
+            var cardGrid = card.Cards;
+            int size = cardGrid.Count;
+            int totalScore = 0;
+
+            // Helper function to count and score a line (row, column, or diagonal)
+            int CountAndScoreLine(List<int> line)
+            {
+                // Get numbers in the line that have been drawn (including the new number)
+                var tempSelectedNumbers = new HashSet<int>(selectedNumbers);
+                tempSelectedNumbers.Add(newNumber);
+                var drawnInLine = line.Where(num => tempSelectedNumbers.Contains(num)).ToList();
+                int lineScore = 0;
+
+                // Calculate score based on position
+                for (int i = 0; i < drawnInLine.Count; i++)
+                {
+                    lineScore += (i + 1) * 10;
+                }
+
+                return lineScore;
+            }
+
+            // Check rows (lines)
+            if (condition.Contains("line"))
+            {
+                foreach (var row in cardGrid)
+                {
+                    totalScore += CountAndScoreLine(row);
+                }
+            }
+
+            // Check columns
+            if (condition.Contains("column"))
+            {
+                for (int col = 0; col < size; col++)
+                {
+                    var column = cardGrid.Select(row => row[col]).ToList();
+                    totalScore += CountAndScoreLine(column);
+                }
+            }
+
+            // Check diagonals if it's a square grid
+            if (condition.Contains("diag") && size > 0 && cardGrid[0].Count == size)
+            {
+                // Diagonal 1 (top-left to bottom-right)
+                var diag1 = new List<int>();
+                for (int i = 0; i < size; i++)
+                {
+                    diag1.Add(cardGrid[i][i]);
+                }
+                totalScore += CountAndScoreLine(diag1);
+
+                // Diagonal 2 (top-right to bottom-left)
+                var diag2 = new List<int>();
+                for (int i = 0; i < size; i++)
+                {
+                    diag2.Add(cardGrid[i][size - i - 1]);
+                }
+                totalScore += CountAndScoreLine(diag2);
+            }
+
+            // Check full card
+            if (condition.Contains("card"))
+            {
+                var allNumbers = cardGrid.SelectMany(row => row).ToList();
+                var tempSelectedForCard = new HashSet<int>(selectedNumbers);
+                tempSelectedForCard.Add(newNumber);
+                var drawnInCard = allNumbers.Where(num => tempSelectedForCard.Contains(num)).ToList();
+
+                for (int i = 0; i < drawnInCard.Count; i++)
+                {
+                    totalScore += (i + 1) * 10;
+                }
+            }
+
+            // Log the score calculation for debugging
+            Console.WriteLine($"Score calculated: {totalScore} for number {newNumber} with condition {condition}");
+
+            return totalScore;
+        }
+
+        // Check for bingo winning conditions and declare winners if conditions are met
+        private static async Task CheckAndDeclareWinningConditions(HttpClient httpClient, Card card, HashSet<int> selectedNumbers, int userIndex)
+        {
+            try
+            {
+                // Initialize winning conditions
+                bool winnerWithLine = false;
+                bool winnerWithColumn = false;
+                bool winnerWithDiagonal = false;
+                bool winnerWithAllCarte = false;
+
+                // Get the card grid
+                var cardGrid = card.Cards;
+                int rows = cardGrid.Count;
+                int cols = rows > 0 ? cardGrid[0].Count : 0;
+
+                if (rows == 0 || cols == 0)
+                {
+                    Console.WriteLine($"User {userIndex}: Invalid card format, cannot check winning conditions");
+                    return;
+                }
+
+                // Check for line win (complete row)
+                for (int i = 0; i < rows; i++)
+                {
+                    bool rowComplete = true;
+                    for (int j = 0; j < cols; j++)
+                    {
+                        if (!selectedNumbers.Contains(cardGrid[i][j]))
+                        {
+                            rowComplete = false;
+                            break;
+                        }
+                    }
+                    if (rowComplete)
+                    {
+                        winnerWithLine = true;
+                        Console.WriteLine($"User {userIndex}: Completed a line (row {i})");
+                        break;
+                    }
+                }
+
+                // Check for column win (complete column)
+                for (int j = 0; j < cols; j++)
+                {
+                    bool colComplete = true;
+                    for (int i = 0; i < rows; i++)
+                    {
+                        if (!selectedNumbers.Contains(cardGrid[i][j]))
+                        {
+                            colComplete = false;
+                            break;
+                        }
+                    }
+                    if (colComplete)
+                    {
+                        winnerWithColumn = true;
+                        Console.WriteLine($"User {userIndex}: Completed a column (column {j})");
+                        break;
+                    }
+                }
+
+                // Check for diagonal win (top-left to bottom-right)
+                if (rows == cols) // Only check diagonal if it's a square grid
+                {
+                    bool diag1Complete = true;
+                    for (int i = 0; i < rows; i++)
+                    {
+                        if (!selectedNumbers.Contains(cardGrid[i][i]))
+                        {
+                            diag1Complete = false;
+                            break;
+                        }
+                    }
+
+                    // Check for diagonal win (top-right to bottom-left)
+                    bool diag2Complete = true;
+                    for (int i = 0; i < rows; i++)
+                    {
+                        if (!selectedNumbers.Contains(cardGrid[i][cols - 1 - i]))
+                        {
+                            diag2Complete = false;
+                            break;
+                        }
+                    }
+
+                    if (diag1Complete || diag2Complete)
+                    {
+                        winnerWithDiagonal = true;
+                        Console.WriteLine($"User {userIndex}: Completed a diagonal");
+                    }
+                }
+
+                // Check for full card win
+                bool allNumbersSelected = true;
+                for (int i = 0; i < rows; i++)
+                {
+                    for (int j = 0; j < cols; j++)
+                    {
+                        if (!selectedNumbers.Contains(cardGrid[i][j]))
+                        {
+                            allNumbersSelected = false;
+                            break;
+                        }
+                    }
+                    if (!allNumbersSelected)
+                        break;
+                }
+
+                if (allNumbersSelected)
+                {
+                    winnerWithAllCarte = true;
+                    Console.WriteLine($"User {userIndex}: Completed the entire card!");
+                }
+
+                // If any winning condition is met, call the winners API
+                if (winnerWithLine || winnerWithColumn || winnerWithDiagonal || winnerWithAllCarte)
+                {
+                    var winnerData = new
+                    {
+                        winnerWithLine = winnerWithLine,
+                        winnerWithColumn = winnerWithColumn,
+                        winnerWithDiagonal = winnerWithDiagonal,
+                        winnerWithAllCarte = winnerWithAllCarte
+                    };
+
+                    var winnerContent = new StringContent(
+                        JsonConvert.SerializeObject(winnerData),
+                        Encoding.UTF8,
+                        "application/json"
+                    );
+
+                    Console.WriteLine($"User {userIndex}: Declaring bingo win with conditions: Line={winnerWithLine}, Column={winnerWithColumn}, Diagonal={winnerWithDiagonal}, AllCard={winnerWithAllCarte}");
+
+                    var winnerResponse = await httpClient.PostAsync($"{BASE_URL}/api/winners", winnerContent);
+                    winnerResponse.EnsureSuccessStatusCode();
+
+                    Console.WriteLine($"User {userIndex}: Successfully declared bingo win!");
+                }
+                else
+                {
+                    Console.WriteLine($"User {userIndex}: No winning conditions met yet");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"User {userIndex}: Error checking or declaring winning conditions: {ex.Message}");
+            }
+        }
+
         private static async Task SimulateUser(int userIndex)
         {
+            // Thread-specific collections for this user
+            var userSelectedNumbers = new HashSet<int>();
+            var pendingNumberSelections = new HashSet<int>();
+
             using var httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
@@ -345,45 +587,37 @@ namespace BingoSignalRClient
                 // Handle "NumberSelected" event (user receives notification of a number to select)
                 connection.On<int>("NumberSelected", (number) =>
                 {
+                    Console.WriteLine($"User {userIndex}: Received number {number} to select");
+
                     if (selectedCard == null) return;
 
                     // Check if this number is in the user's card
-                    var flatNumbers = selectedCard.Cards.SelectMany(row => row).ToList();
-
-                    if (flatNumbers.Contains(number))
-                    {
-                        Console.WriteLine($"User {userIndex}: Number {number} is in card");
-
-                        // Store the number to be selected during the Timer event
-                        lock (selectedNumbersLock)
-                        {
-                            // Initialize the set if it doesn't exist for this user
-                            if (!userSelectedNumbers.ContainsKey(userId))
-                            {
-                                userSelectedNumbers[userId] = new HashSet<int>();
-                            }
-
-                            // Check if this number has already been selected by this user
-                            if (userSelectedNumbers[userId].Contains(number))
-                            {
-                                Console.WriteLine($"User {userIndex}: Number {number} was already selected by this user");
-                            }
-                            else
-                            {
-                                // Store the number as pending selection
-                                if (!pendingNumberSelections.ContainsKey(userId))
-                                {
-                                    pendingNumberSelections[userId] = new HashSet<int>();
-                                }
-                                pendingNumberSelections[userId].Add(number);
-                                Console.WriteLine($"User {userIndex}: Number {number} queued for selection during Timer event");
-                            }
-                        }
-                    }
-                    else
+                    bool numberInCard = selectedCard.Cards.SelectMany(row => row).Contains(number);
+                    if (!numberInCard)
                     {
                         Console.WriteLine($"User {userIndex}: Number {number} not in card");
+                        return;
                     }
+
+                    Console.WriteLine($"User {userIndex}: Number {number} is in card");
+
+                    // Skip if already selected or pending
+                    if (userSelectedNumbers.Contains(number))
+                    {
+                        Console.WriteLine($"User {userIndex}: Number {number} was already selected by this user");
+                        return;
+                    }
+
+                    // Skip if already pending selection
+                    if (pendingNumberSelections.Contains(number))
+                    {
+                        Console.WriteLine($"User {userIndex}: Number {number} is already pending selection");
+                        return;
+                    }
+
+                    // Queue number for selection
+                    pendingNumberSelections.Add(number);
+                    Console.WriteLine($"User {userIndex}: Number {number} queued for selection during Timer event");
                 });
 
                 // Handle "Timer" event (game countdown)
@@ -394,6 +628,11 @@ namespace BingoSignalRClient
                     // Only attempt to select numbers when we have a selected card
                     if (selectedCard != null)
                     {
+                        // Check for bingo winning conditions when timer reaches 0
+                        if (timeLeft == 0)
+                        {
+                            await CheckAndDeclareWinningConditions(httpClient, selectedCard, userSelectedNumbers, userIndex);
+                        }
                         // Use timeLeft to distribute the load
                         // For example, some users will select at timeLeft = 10, others at 9, etc.
                         // This creates a more natural distribution based on the user's index
@@ -402,45 +641,26 @@ namespace BingoSignalRClient
                         if (timeLeft == userSpecificTriggerTime)
                         {
                             // Process any pending number selections
-                            HashSet<int> pendingNumbers = null;
-
-                            lock (selectedNumbersLock)
+                            if (pendingNumberSelections.Count > 0)
                             {
-                                // Check if there are any pending numbers to select
-                                if (pendingNumberSelections.TryGetValue(userId, out pendingNumbers) && pendingNumbers.Count > 0)
-                                {
-                                    // Make a copy of the pending numbers to process outside the lock
-                                    pendingNumbers = new HashSet<int>(pendingNumbers);
-                                    // Clear the pending selections as we're about to process them
-                                    pendingNumberSelections[userId].Clear();
-                                }
-                            }
-
-                            if (pendingNumbers != null && pendingNumbers.Count > 0)
-                            {
+                                // Add a random delay (max 900ms) before processing numbers
                                 var random = new Random();
-                                var randomDelay = random.Next(100); // Random delay up to 100ms
-
-                                await Task.Delay(randomDelay);
+                                var initialDelay = random.Next(900); // Random delay up to 900ms
+                                await Task.Delay(initialDelay);
+                                // Make a copy of the pending numbers
+                                var pendingNumbers = new HashSet<int>(pendingNumberSelections);
+                                // Clear the pending selections as we're about to process them
+                                pendingNumberSelections.Clear();
 
                                 foreach (int numberToSelect in pendingNumbers)
                                 {
                                     // Check if this number has already been selected
-                                    bool alreadySelected = false;
-
-                                    lock (selectedNumbersLock)
-                                    {
-                                        if (!userSelectedNumbers.ContainsKey(userId))
-                                        {
-                                            userSelectedNumbers[userId] = new HashSet<int>();
-                                        }
-
-                                        alreadySelected = userSelectedNumbers[userId].Contains(numberToSelect);
-                                    }
+                                    bool alreadySelected = userSelectedNumbers.Contains(numberToSelect);
 
                                     if (!alreadySelected)
                                     {
-                                        int score = 10; // or based on some logic
+                                        // Calculate score based on the card and currently selected numbers
+                                        int score = CalculateScore(selectedCard, userSelectedNumbers, numberToSelect);
 
                                         try
                                         {
@@ -455,12 +675,9 @@ namespace BingoSignalRClient
                                             numberResponse.EnsureSuccessStatusCode();
 
                                             // Mark this number as selected for this user
-                                            lock (selectedNumbersLock)
-                                            {
-                                                userSelectedNumbers[userId].Add(numberToSelect);
-                                            }
+                                            userSelectedNumbers.Add(numberToSelect);
 
-                                            Console.WriteLine($"User {userIndex}: Sent selected number {numberToSelect} at timeLeft={timeLeft} after {randomDelay}ms");
+                                            Console.WriteLine($"User {userIndex}: Sent selected number {numberToSelect} with score {score} at timeLeft={timeLeft}");
                                             Interlocked.Increment(ref notif);
                                         }
                                         catch (Exception ex)
