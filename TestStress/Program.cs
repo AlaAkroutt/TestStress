@@ -19,6 +19,7 @@ namespace BingoSignalRClient
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
         //private const int CARD_DELAY = 100; // 1 hour
         //private const int SELECT_DELAY = 100; // 1 hour
+       private static int x =0;
         private static int MAX_TIMER = int.Parse(Environment.GetEnvironmentVariable("MAX_TIMER"));
         private static int USER_DELAY = int.Parse(Environment.GetEnvironmentVariable("delay"));
         private static int semaphore = int.Parse(Environment.GetEnvironmentVariable("semaphore"));
@@ -33,6 +34,9 @@ namespace BingoSignalRClient
 
         // Semaphore to limit concurrent card operations to 500 at a time
         private static readonly SemaphoreSlim cardOperationsSemaphore = new SemaphoreSlim(semaphore, semaphore);
+
+        // ManualResetEvent to pause all threads until user input is received
+        private static readonly ManualResetEvent distributionPauseEvent = new ManualResetEvent(false);
 
         // List to store user tokens loaded from file
         private static List<UserToken> userTokens = new List<UserToken>();
@@ -96,6 +100,15 @@ namespace BingoSignalRClient
                     Console.WriteLine($"Notifications: {notif}");
                 }
             }
+
+            // Start a separate task to wait for user input to resume distribution
+            Task.Run(() =>
+            {
+                Console.WriteLine("\nPress Enter to allow card distribution to proceed when the 'distribution_in_progress' event occurs...");
+                Console.ReadLine();
+                Console.WriteLine("\n*** DISTRIBUTION UNPAUSED - All threads will now proceed with card operations ***\n");
+                distributionPauseEvent.Set(); // Signal all waiting threads to continue
+            });
 
             // Wait for all tasks to complete
             await Task.WhenAll(tasks);
@@ -465,7 +478,11 @@ namespace BingoSignalRClient
                         // Use Task.Delay instead of setTimeout
                         //await Task.Delay(randomDelayTime);
 
-                        // Wait for semaphore to limit concurrent card operations to 500
+                        // Wait for user input before proceeding with distribution
+                        Console.WriteLine($"User {userIndex}: Waiting for user input to proceed with card operations...");
+                       
+
+                        // Wait for semaphore to limit concurrent card operations
                         await cardOperationsSemaphore.WaitAsync();
                         Console.WriteLine($"User {userIndex}: Acquired semaphore for card operations");
 
@@ -575,7 +592,7 @@ namespace BingoSignalRClient
                                 var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
                                 selectCardResponse.EnsureSuccessStatusCode();
 
-                                Console.WriteLine($"User {userIndex}: Card selected after ms");
+                                Console.WriteLine($"User {userIndex}: Card selected");
                                 Interlocked.Increment(ref notif);
                                 cardSelected = true;
                             }
