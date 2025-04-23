@@ -10,7 +10,7 @@ ENV MAX_TIMER=15
 #ENV CARD_DELAY=300000
 #ENV SELECT_DELAY=300000
 ENV delay=4
-ENV semaphore=20
+ENV semaphore=200
 
 COPY ["TestStress/tokens.json", "/app/testnew"]
 # This stage is used to build the service project
