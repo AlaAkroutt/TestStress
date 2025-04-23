@@ -35,7 +35,7 @@ namespace BingoSignalRClient
         private static readonly SemaphoreSlim cardOperationsSemaphore = new SemaphoreSlim(semaphore, semaphore);
 
         // Static flag to control whether distribution should proceed
-        private static bool allowDistribution = false;
+
 
         // List to store user tokens loaded from file
         private static List<UserToken> userTokens = new List<UserToken>();
@@ -101,14 +101,7 @@ namespace BingoSignalRClient
             }
 
             // Start a separate task to wait for user input to resume distribution
-            Task.Run(() =>
-            {
-                Console.WriteLine("\nPress Enter to allow card distribution to proceed when the 'distribution_in_progress' event occurs...");
-                Console.ReadLine();
-                Console.WriteLine("\n*** DISTRIBUTION UNPAUSED - All threads will now proceed with card operations ***\n");
-                allowDistribution = true; // Set the flag to allow distribution to proceed
-            });
-
+        
             // Wait for all tasks to complete
             await Task.WhenAll(tasks);
             Console.WriteLine("Simulation completed");
@@ -481,10 +474,7 @@ namespace BingoSignalRClient
                         Console.WriteLine($"User {userIndex}: Waiting for user input to proceed with card operations...");
 
                         // Poll the allowDistribution flag until it becomes true
-                        while (!allowDistribution)
-                        {
-                            await Task.Delay(100); // Check every 100ms
-                        }
+                      
 
                         // Wait for semaphore to limit concurrent card operations
                         await cardOperationsSemaphore.WaitAsync();
