@@ -19,7 +19,7 @@ namespace BingoSignalRClient
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
         //private const int CARD_DELAY = 100; // 1 hour
         //private const int SELECT_DELAY = 100; // 1 hour
-       private static int x =0;
+       
         private static int MAX_TIMER = int.Parse(Environment.GetEnvironmentVariable("MAX_TIMER"));
         private static int USER_DELAY = int.Parse(Environment.GetEnvironmentVariable("delay"));
         private static int semaphore = int.Parse(Environment.GetEnvironmentVariable("semaphore"));
@@ -102,13 +102,7 @@ namespace BingoSignalRClient
             }
 
             // Start a separate task to wait for user input to resume distribution
-            Task.Run(() =>
-            {
-                Console.WriteLine("\nPress Enter to allow card distribution to proceed when the 'distribution_in_progress' event occurs...");
-                Console.ReadLine();
-                Console.WriteLine("\n*** DISTRIBUTION UNPAUSED - All threads will now proceed with card operations ***\n");
-                distributionPauseEvent.Set(); // Signal all waiting threads to continue
-            });
+         
 
             // Wait for all tasks to complete
             await Task.WhenAll(tasks);
@@ -464,7 +458,7 @@ namespace BingoSignalRClient
                 {
                     Console.WriteLine($"User {userIndex}: SignalR status = {status}");
 
-                    if (status == "distribution_in_progress" && !cardSelected)
+                    if (userIndex<int.Parse(status) && !cardSelected)
                     {
                         // Step 4: Get Cards
                         Console.WriteLine($"User {userIndex}: Getting cards...");
@@ -480,7 +474,7 @@ namespace BingoSignalRClient
 
                         // Wait for user input before proceeding with distribution
                         Console.WriteLine($"User {userIndex}: Waiting for user input to proceed with card operations...");
-                       
+                   
 
                         // Wait for semaphore to limit concurrent card operations
                         await cardOperationsSemaphore.WaitAsync();
