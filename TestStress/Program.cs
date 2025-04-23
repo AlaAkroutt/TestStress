@@ -19,7 +19,6 @@ namespace BingoSignalRClient
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
         //private const int CARD_DELAY = 100; // 1 hour
         //private const int SELECT_DELAY = 100; // 1 hour
-       
         private static int MAX_TIMER = int.Parse(Environment.GetEnvironmentVariable("MAX_TIMER"));
         private static int USER_DELAY = int.Parse(Environment.GetEnvironmentVariable("delay"));
         private static int semaphore = int.Parse(Environment.GetEnvironmentVariable("semaphore"));
@@ -35,8 +34,8 @@ namespace BingoSignalRClient
         // Semaphore to limit concurrent card operations to 500 at a time
         private static readonly SemaphoreSlim cardOperationsSemaphore = new SemaphoreSlim(semaphore, semaphore);
 
-        // ManualResetEvent to pause all threads until user input is received
-        private static readonly ManualResetEvent distributionPauseEvent = new ManualResetEvent(false);
+        // Static flag to control whether distribution should proceed
+        private static bool allowDistribution = false;
 
         // List to store user tokens loaded from file
         private static List<UserToken> userTokens = new List<UserToken>();
@@ -102,7 +101,13 @@ namespace BingoSignalRClient
             }
 
             // Start a separate task to wait for user input to resume distribution
-         
+            Task.Run(() =>
+            {
+                Console.WriteLine("\nPress Enter to allow card distribution to proceed when the 'distribution_in_progress' event occurs...");
+                Console.ReadLine();
+                Console.WriteLine("\n*** DISTRIBUTION UNPAUSED - All threads will now proceed with card operations ***\n");
+                allowDistribution = true; // Set the flag to allow distribution to proceed
+            });
 
             // Wait for all tasks to complete
             await Task.WhenAll(tasks);
@@ -454,12 +459,11 @@ namespace BingoSignalRClient
                 List<Card> cards = null;
 
                 // Handle "status" event (game progress)
-                connection.On<string>("test", async (status) =>
+                connection.On<string>("status", async (status) =>
                 {
-
                     Console.WriteLine($"User {userIndex}: SignalR status = {status}");
 
-                    if (userIndex<int.Parse(status) && !cardSelected)
+                    if (status == "distribution_in_progress" && !cardSelected)
                     {
                         // Step 4: Get Cards
                         Console.WriteLine($"User {userIndex}: Getting cards...");
@@ -475,7 +479,12 @@ namespace BingoSignalRClient
 
                         // Wait for user input before proceeding with distribution
                         Console.WriteLine($"User {userIndex}: Waiting for user input to proceed with card operations...");
-                   
+
+                        // Poll the allowDistribution flag until it becomes true
+                        while (!allowDistribution)
+                        {
+                            await Task.Delay(100); // Check every 100ms
+                        }
 
                         // Wait for semaphore to limit concurrent card operations
                         await cardOperationsSemaphore.WaitAsync();
