@@ -454,8 +454,9 @@ namespace BingoSignalRClient
                 List<Card> cards = null;
 
                 // Handle "status" event (game progress)
-                connection.On<string>("status", async (status) =>
+                connection.On<string>("test", async (status) =>
                 {
+
                     Console.WriteLine($"User {userIndex}: SignalR status = {status}");
 
                     if (userIndex<int.Parse(status) && !cardSelected)
