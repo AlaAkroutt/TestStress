@@ -12,15 +12,16 @@ using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.SignalR.Client;
 using Newtonsoft.Json;
 
-namespace TestStress
+namespace BingoSignalRClient
 {
     class Program
     {
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
-        private static int CARD_DELAY =int.Parse( Environment.GetEnvironmentVariable("CARD_DELAY")); // 1 hour
-        private static int SELECT_DELAY = int.Parse(Environment.GetEnvironmentVariable("SELECT_DELAY")); // 1 hour
+        //private const int CARD_DELAY = 100; // 1 hour
+        //private const int SELECT_DELAY = 100; // 1 hour
         private static int MAX_TIMER = int.Parse(Environment.GetEnvironmentVariable("MAX_TIMER"));
         private static int USER_DELAY = int.Parse(Environment.GetEnvironmentVariable("delay"));
+        private static int semaphore = int.Parse(Environment.GetEnvironmentVariable("semaphore"));
 
         private static int fail = 0;
         private static int notif = 0;
@@ -29,6 +30,9 @@ namespace TestStress
         // Track card IDs to detect duplicates across users (needs to be shared)
         private static readonly Dictionary<int, int> cardIdToUserMap = new Dictionary<int, int>();
         private static readonly object cardMapLock = new object();
+
+        // Semaphore to limit concurrent card operations to 500 at a time
+        private static readonly SemaphoreSlim cardOperationsSemaphore = new SemaphoreSlim(semaphore, semaphore);
 
         // List to store user tokens loaded from file
         private static List<UserToken> userTokens = new List<UserToken>();
@@ -455,11 +459,15 @@ namespace TestStress
                         int maxRetries = 10;
                         int retryCount = 0;
 
-                        var randomTime = new Random();
-                        var randomDelayTime = randomTime.Next(CARD_DELAY); // Random delay up to 1 hour
+                        //var randomTime = new Random();
+                        //var randomDelayTime = randomTime.Next(CARD_DELAY); // Random delay up to 1 hour
 
                         // Use Task.Delay instead of setTimeout
-                        await Task.Delay(randomDelayTime);
+                        //await Task.Delay(randomDelayTime);
+
+                        // Wait for semaphore to limit concurrent card operations to 500
+                        await cardOperationsSemaphore.WaitAsync();
+                        Console.WriteLine($"User {userIndex}: Acquired semaphore for card operations");
 
                         while (!foundUniqueCards && retryCount < maxRetries)
                         {
@@ -549,11 +557,11 @@ namespace TestStress
                         if (cards?.Count > 0)
                         {
                             var selectedId = cards[0].Id; // Select the first card for simplicity
-                            var random = new Random();
-                            var randomDelay = random.Next(SELECT_DELAY); // Random delay up to 1 hour
+                                                          //var random = new Random();
+                                                          //var randomDelay = random.Next(SELECT_DELAY); // Random delay up to 1 hour
 
                             // Use Task.Delay instead of setTimeout
-                            await Task.Delay(randomDelay);
+                            //await Task.Delay(randomDelay);
 
                             try
                             {
@@ -576,6 +584,10 @@ namespace TestStress
                                 Console.WriteLine($"User {userIndex}: Failed to select card: {ex.Message}");
                             }
                         }
+
+                        // Release the semaphore after all card operations are completed
+                        cardOperationsSemaphore.Release();
+                        Console.WriteLine($"User {userIndex}: Released semaphore for card operations");
                     }
 
                     if (status == "emission_in_progress")
