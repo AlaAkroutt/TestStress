@@ -26,7 +26,7 @@ namespace BingoSignalRClient
         private static int fail = 0;
         private static int notif = 0;
         private static readonly object lockObject = new object();
-        private static string notifstring = Environment.GetEnvironmentVariable("Notif_Name");
+
         // Track card IDs to detect duplicates across users (needs to be shared)
         private static readonly Dictionary<int, int> cardIdToUserMap = new Dictionary<int, int>();
         private static readonly object cardMapLock = new object();
@@ -100,7 +100,14 @@ namespace BingoSignalRClient
                 }
             }
 
-           
+            // Start a separate task to wait for user input to resume distribution
+            Task.Run(() =>
+            {
+                Console.WriteLine("\nPress Enter to allow card distribution to proceed when the 'distribution_in_progress' event occurs...");
+                Console.ReadLine();
+                Console.WriteLine("\n*** DISTRIBUTION UNPAUSED - All threads will now proceed with card operations ***\n");
+                allowDistribution = true; // Set the flag to allow distribution to proceed
+            });
 
             // Wait for all tasks to complete
             await Task.WhenAll(tasks);
@@ -452,7 +459,7 @@ namespace BingoSignalRClient
                 List<Card> cards = null;
 
                 // Handle "status" event (game progress)
-                connection.On<string>(notifstring, async (status) =>
+                connection.On<string>("status", async (status) =>
                 {
                     Console.WriteLine($"User {userIndex}: SignalR status = {status}");
 
@@ -473,7 +480,11 @@ namespace BingoSignalRClient
                         // Wait for user input before proceeding with distribution
                         Console.WriteLine($"User {userIndex}: Waiting for user input to proceed with card operations...");
 
-                     
+                        // Poll the allowDistribution flag until it becomes true
+                        while (!allowDistribution)
+                        {
+                            await Task.Delay(100); // Check every 100ms
+                        }
 
                         // Wait for semaphore to limit concurrent card operations
                         await cardOperationsSemaphore.WaitAsync();
@@ -658,8 +669,10 @@ namespace BingoSignalRClient
                         // Use timeLeft to distribute the load
                         // For example, some users will select at timeLeft = 10, others at 9, etc.
                         // This creates a more natural distribution based on the user's index
-                      // Distribute across 1-5 seconds
+                        int userSpecificTriggerTime = (userIndex % MAX_TIMER) + 1; // Distribute across 1-5 seconds
 
+                        if (timeLeft == userSpecificTriggerTime)
+                        {
                             // Process any pending number selections
                             if (pendingNumberSelections.Count > 0)
                             {
@@ -711,21 +724,12 @@ namespace BingoSignalRClient
                                     }
                                 }
                             }
-                        
+                        }
                     }
-              
-                
-                
                 });
 
                 // Step 6: Start SignalR connection
                 await connection.StartAsync();
-                connection.Closed += async (error) =>
-                {
-                    Console.WriteLine($"User {userIndex}: Connection closed: {error?.Message}");
-                    await Task.Delay(2000);
-                    await connection.StartAsync();
-                };
                 Console.WriteLine($"User {userIndex}: SignalR connection started");
 
                 // Keep the connection alive for the simulation
@@ -737,7 +741,6 @@ namespace BingoSignalRClient
                 Interlocked.Increment(ref fail);
             }
         }
-   
     }
 
     // Data models
