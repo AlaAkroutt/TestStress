@@ -730,6 +730,12 @@ namespace BingoSignalRClient
 
                 // Step 6: Start SignalR connection
                 await connection.StartAsync();
+                connection.Closed += async (error) =>
+                {
+                    Console.WriteLine($"User {userIndex}: Connection closed: {error?.Message}");
+                    await Task.Delay(2000);
+                    await connection.StartAsync();
+                };
                 Console.WriteLine($"User {userIndex}: SignalR connection started");
 
                 // Keep the connection alive for the simulation
@@ -741,6 +747,7 @@ namespace BingoSignalRClient
                 Interlocked.Increment(ref fail);
             }
         }
+   
     }
 
     // Data models
