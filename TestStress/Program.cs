@@ -658,10 +658,8 @@ namespace BingoSignalRClient
                         // Use timeLeft to distribute the load
                         // For example, some users will select at timeLeft = 10, others at 9, etc.
                         // This creates a more natural distribution based on the user's index
-                        int userSpecificTriggerTime = (userIndex % MAX_TIMER) + 1; // Distribute across 1-5 seconds
+                      // Distribute across 1-5 seconds
 
-                        if (timeLeft == userSpecificTriggerTime)
-                        {
                             // Process any pending number selections
                             if (pendingNumberSelections.Count > 0)
                             {
@@ -713,8 +711,11 @@ namespace BingoSignalRClient
                                     }
                                 }
                             }
-                        }
+                        
                     }
+              
+                
+                
                 });
 
                 // Step 6: Start SignalR connection
