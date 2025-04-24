@@ -34,6 +34,9 @@ namespace BingoSignalRClient
         // Semaphore to limit concurrent card operations to 500 at a time
         private static readonly SemaphoreSlim cardOperationsSemaphore = new SemaphoreSlim(semaphore, semaphore);
 
+        // Semaphore to limit concurrent number selection API calls to 200
+        private static readonly SemaphoreSlim numberSelectionSemaphore = new SemaphoreSlim(200, 200);
+
         // Static flag to control whether distribution should proceed
         private static bool allowDistribution = false;
 
@@ -697,21 +700,10 @@ namespace BingoSignalRClient
 
                                         try
                                         {
-                                            var numberData = new[] { numberToSelect, score };
-                                            var numberContent = new StringContent(
-                                                JsonConvert.SerializeObject(numberData),
-                                                Encoding.UTF8,
-                                                "application/json"
-                                            );
+                                            // Submit the number selection request to a thread pool
+                                            SubmitNumberSelectionRequest(httpClient, numberToSelect, score, userIndex, userSelectedNumbers, timeLeft);
 
-                                            var numberResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
-                                            numberResponse.EnsureSuccessStatusCode();
-
-                                            // Mark this number as selected for this user
-                                            userSelectedNumbers.Add(numberToSelect);
-
-                                            Console.WriteLine($"User {userIndex}: Sent selected number {numberToSelect} with score {score} at timeLeft={timeLeft}");
-                                            Interlocked.Increment(ref notif);
+                                            Console.WriteLine($"User {userIndex}: Queued selected number {numberToSelect} with score {score} at timeLeft={timeLeft}");
                                         }
                                         catch (Exception ex)
                                         {
@@ -740,6 +732,57 @@ namespace BingoSignalRClient
                 Console.WriteLine($"User {userIndex} error: {ex.Message}");
                 Interlocked.Increment(ref fail);
             }
+        }
+
+        // Submit a number selection request to be processed in a separate thread with semaphore control
+        private static void SubmitNumberSelectionRequest(HttpClient httpClient, int numberToSelect, int score, int userIndex, HashSet<int> userSelectedNumbers, int timeLeft)
+        {
+            // Start a new task to handle the number selection request
+            Task.Run(async () =>
+            {
+                try
+                {
+                    // Wait for semaphore to limit concurrent API calls
+                    await numberSelectionSemaphore.WaitAsync();
+                    Console.WriteLine($"User {userIndex}: Acquired semaphore for number selection API call");
+
+                    try
+                    {
+                        var numberData = new[] { numberToSelect, score };
+                        var numberContent = new StringContent(
+                            JsonConvert.SerializeObject(numberData),
+                            Encoding.UTF8,
+                            "application/json"
+                        );
+
+                        var numberResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
+                        numberResponse.EnsureSuccessStatusCode();
+
+                        // Mark this number as selected for this user
+                        lock (userSelectedNumbers)
+                        {
+                            userSelectedNumbers.Add(numberToSelect);
+                        }
+
+                        Console.WriteLine($"User {userIndex}: Successfully sent selected number {numberToSelect} with score {score} at timeLeft={timeLeft}");
+                        Interlocked.Increment(ref notif);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"User {userIndex}: Error in thread sending selected number: {ex.Message}");
+                    }
+                    finally
+                    {
+                        // Always release the semaphore
+                        numberSelectionSemaphore.Release();
+                        Console.WriteLine($"User {userIndex}: Released semaphore for number selection API call");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"User {userIndex}: Error acquiring semaphore: {ex.Message}");
+                }
+            });
         }
     }
 
