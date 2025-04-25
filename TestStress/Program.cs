@@ -26,7 +26,7 @@ namespace BingoSignalRClient
         private static int fail = 0;
         private static int notif = 0;
         private static readonly object lockObject = new object();
-
+        private static int LastNumber = 0;
         // Track card IDs to detect duplicates across users (needs to be shared)
         private static readonly Dictionary<int, int> cardIdToUserMap = new Dictionary<int, int>();
         private static readonly object cardMapLock = new object();
@@ -621,8 +621,14 @@ namespace BingoSignalRClient
                 });
 
                 // Handle "NumberSelected" event (user receives notification of a number to select)
-                connection.On<int>("NumberSelected", (number) =>
+                connection.On<int>("NumberSelected",async (number) =>
                 {
+                    if(LastNumber==number)
+                    {
+                        Console.WriteLine($"User {userIndex}: Number {number} already selected, skipping");
+                        return;
+                    }else
+                        LastNumber = number;
                     Console.WriteLine($"User {userIndex}: Received number {number} to select");
 
                     if (selectedCard == null) return;
@@ -654,22 +660,13 @@ namespace BingoSignalRClient
                     // Queue number for selection
                     pendingNumberSelections.Add(number);
                     Console.WriteLine($"User {userIndex}: Number {number} queued for selection during Timer event");
-                });
 
-                // Handle "Timer" event (game countdown)
-                connection.On<int>("Timer", async (timeLeft) =>
-                {
-                    Console.WriteLine($"User {userIndex}: Timer = {timeLeft}");
-
-                    // Only attempt to select numbers when we have a selected card
                     if (selectedCard != null)
                     {
                         // For example, some users will select at timeLeft = 10, others at 9, etc.
                         // This creates a more natural distribution based on the user's index
-                        int userSpecificTriggerTime = (userIndex % MAX_TIMER) + 1; // Distribute across 1-5 seconds
 
-                        if (timeLeft == userSpecificTriggerTime)
-                        {
+                       
                             // Process any pending number selections
                             if (pendingNumberSelections.Count > 0)
                             {
@@ -700,9 +697,9 @@ namespace BingoSignalRClient
                                                 userSelectedNumbers.Add(numberToSelect);
                                             }
                                             // Submit the number selection request to a thread pool
-                                            SubmitNumberSelectionRequest(httpClient, numberToSelect, score, userIndex, userSelectedNumbers, timeLeft);
+                                            SubmitNumberSelectionRequest(httpClient, numberToSelect, score, userIndex, userSelectedNumbers, 0);
 
-                                            Console.WriteLine($"User {userIndex}: Queued selected number {numberToSelect} with score {score} at timeLeft={timeLeft}");
+                                            Console.WriteLine($"User {userIndex}: Queued selected number {numberToSelect} with score {score} at timeLeft={0}");
                                         }
                                         catch (Exception ex)
                                         {
@@ -715,14 +712,18 @@ namespace BingoSignalRClient
                                     }
                                 }
                             }
-                        }
+                        
                         // Check for bingo winning conditions when timer reaches 0
-                        if (timeLeft == 0)
-                        {
+                        
                             await CheckAndDeclareWinningConditions(httpClient, selectedCard, userSelectedNumbers, userIndex);
-                        }
+                        
                     }
+
+
+
                 });
+
+         
 
                 // Step 6: Start SignalR connection
                 await connection.StartAsync();
@@ -738,6 +739,10 @@ namespace BingoSignalRClient
             }
         }
 
+        private void aaa()
+        {
+
+        }
         // Submit a number selection request to be processed in a separate thread with semaphore control
         private static void SubmitNumberSelectionRequest(HttpClient httpClient, int numberToSelect, int score, int userIndex, HashSet<int> userSelectedNumbers, int timeLeft)
         {
