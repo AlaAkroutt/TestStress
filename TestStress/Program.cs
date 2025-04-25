@@ -51,7 +51,17 @@ namespace BingoSignalRClient
             Console.WriteLine("Starting Bingo SignalR Client Simulation");
 
             // Check if a tokens file was specified as a command-line argument
-           
+            // Check if a tokens file was specified as a command-line argument
+            if (args.Length > 0)
+            {
+                tokensFilePath = args[0];
+                Console.WriteLine($"Using tokens file: {tokensFilePath}");
+            }
+            else
+            {
+                Console.WriteLine($"No tokens file specified, using default: {tokensFilePath}");
+            }
+
             // Load tokens from file
             LoadTokensFromFile();
 
