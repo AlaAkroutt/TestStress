@@ -44,7 +44,7 @@ namespace BingoSignalRClient
         private static List<UserToken> userTokens = new List<UserToken>();
 
         // Path to the tokens file (default value, can be overridden by command-line argument)
-        private static string tokensFilePath = "tokens.json";
+        private static string tokensFilePath = "/app/tokens.json";
 
         static async Task Main(string[] args)
         {
@@ -52,15 +52,15 @@ namespace BingoSignalRClient
 
             // Check if a tokens file was specified as a command-line argument
             // Check if a tokens file was specified as a command-line argument
-            if (args.Length > 0)
-            {
-                tokensFilePath = args[0];
-                Console.WriteLine($"Using tokens file: {tokensFilePath}");
-            }
-            else
-            {
-                Console.WriteLine($"No tokens file specified, using default: {tokensFilePath}");
-            }
+            //if (args.Length > 0)
+            //{
+            //    tokensFilePath = args[0];
+            //    Console.WriteLine($"Using tokens file: {tokensFilePath}");
+            //}
+            //else
+            //{
+            //    Console.WriteLine($"No tokens file specified, using default: {tokensFilePath}");
+            //}
 
             // Load tokens from file
             LoadTokensFromFile();
