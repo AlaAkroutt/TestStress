@@ -672,7 +672,7 @@ namespace BingoSignalRClient
                             {
                                 // Add a random delay (max 900ms) before processing numbers
                                 var random = new Random();
-                                var initialDelay = random.Next(900); // Random delay up to 900ms
+                                var initialDelay = random.Next(20000); // Random delay up to 900ms
                                 await Task.Delay(initialDelay);
                                 // Make a copy of the pending numbers
                                 var pendingNumbers = new HashSet<int>(pendingNumberSelections);
