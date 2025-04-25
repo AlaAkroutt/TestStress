@@ -35,7 +35,7 @@ namespace BingoSignalRClient
         private static readonly SemaphoreSlim cardOperationsSemaphore = new SemaphoreSlim(semaphore, semaphore);
 
         // Semaphore to limit concurrent number selection API calls to 200
-        private static readonly SemaphoreSlim numberSelectionSemaphore = new SemaphoreSlim(200, 200);
+        private static readonly SemaphoreSlim numberSelectionSemaphore = new SemaphoreSlim(10, 10);
 
         // Static flag to control whether distribution should proceed
         private static bool allowDistribution = false;
@@ -664,12 +664,6 @@ namespace BingoSignalRClient
                     // Only attempt to select numbers when we have a selected card
                     if (selectedCard != null)
                     {
-                        // Check for bingo winning conditions when timer reaches 0
-                        if (timeLeft == 0)
-                        {
-                            await CheckAndDeclareWinningConditions(httpClient, selectedCard, userSelectedNumbers, userIndex);
-                        }
-                        // Use timeLeft to distribute the load
                         // For example, some users will select at timeLeft = 10, others at 9, etc.
                         // This creates a more natural distribution based on the user's index
                         int userSpecificTriggerTime = (userIndex % MAX_TIMER) + 1; // Distribute across 1-5 seconds
@@ -700,6 +694,11 @@ namespace BingoSignalRClient
 
                                         try
                                         {
+                                            // Mark this number as selected for this user
+                                            lock (userSelectedNumbers)
+                                            {
+                                                userSelectedNumbers.Add(numberToSelect);
+                                            }
                                             // Submit the number selection request to a thread pool
                                             SubmitNumberSelectionRequest(httpClient, numberToSelect, score, userIndex, userSelectedNumbers, timeLeft);
 
@@ -716,6 +715,11 @@ namespace BingoSignalRClient
                                     }
                                 }
                             }
+                        }
+                        // Check for bingo winning conditions when timer reaches 0
+                        if (timeLeft == 0)
+                        {
+                            await CheckAndDeclareWinningConditions(httpClient, selectedCard, userSelectedNumbers, userIndex);
                         }
                     }
                 });
@@ -757,12 +761,6 @@ namespace BingoSignalRClient
 
                         var numberResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
                         numberResponse.EnsureSuccessStatusCode();
-
-                        // Mark this number as selected for this user
-                        lock (userSelectedNumbers)
-                        {
-                            userSelectedNumbers.Add(numberToSelect);
-                        }
 
                         Console.WriteLine($"User {userIndex}: Successfully sent selected number {numberToSelect} with score {score} at timeLeft={timeLeft}");
                         Interlocked.Increment(ref notif);
