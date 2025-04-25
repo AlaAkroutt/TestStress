@@ -3,7 +3,8 @@
     "TestStress": {
       "commandName": "Project",
       "environmentVariables": {
-        "users": "10000"
+        "delay": "4",
+        "semaphore": "200"
       }
     },
     "Container (Dockerfile)": {

@@ -19,14 +19,14 @@ namespace BingoSignalRClient
         private const string BASE_URL = "https://bingo-backend.zetabox.tn";
         //private const int CARD_DELAY = 100; // 1 hour
         //private const int SELECT_DELAY = 100; // 1 hour
-        private static int MAX_TIMER = int.Parse(Environment.GetEnvironmentVariable("MAX_TIMER"));
+        //private static int MAX_TIMER = int.Parse(Environment.GetEnvironmentVariable("MAX_TIMER"));
         private static int USER_DELAY = int.Parse(Environment.GetEnvironmentVariable("delay"));
         private static int semaphore = int.Parse(Environment.GetEnvironmentVariable("semaphore"));
 
         private static int fail = 0;
         private static int notif = 0;
         private static readonly object lockObject = new object();
-        private static int LastNumber = 0;
+
         // Track card IDs to detect duplicates across users (needs to be shared)
         private static readonly Dictionary<int, int> cardIdToUserMap = new Dictionary<int, int>();
         private static readonly object cardMapLock = new object();
@@ -51,16 +51,7 @@ namespace BingoSignalRClient
             Console.WriteLine("Starting Bingo SignalR Client Simulation");
 
             // Check if a tokens file was specified as a command-line argument
-            if (args.Length > 0)
-            {
-                tokensFilePath = args[0];
-                Console.WriteLine($"Using tokens file: {tokensFilePath}");
-            }
-            else
-            {
-                Console.WriteLine($"No tokens file specified, using default: {tokensFilePath}");
-            }
-
+           
             // Load tokens from file
             LoadTokensFromFile();
 
@@ -122,7 +113,7 @@ namespace BingoSignalRClient
         {
             try
             {
-                string filePath = Path.Combine(Directory.GetCurrentDirectory(), tokensFilePath);
+                var filePath = Path.Combine(Directory.GetCurrentDirectory(), tokensFilePath);
                 if (File.Exists(filePath))
                 {
                     string json = File.ReadAllText(filePath);
@@ -427,7 +418,7 @@ namespace BingoSignalRClient
             // Thread-specific collections for this user
             var userSelectedNumbers = new HashSet<int>();
             var pendingNumberSelections = new HashSet<int>();
-
+        var    LastNumber = -1;
             using var httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
@@ -697,7 +688,7 @@ namespace BingoSignalRClient
                                                 userSelectedNumbers.Add(numberToSelect);
                                             }
                                             // Submit the number selection request to a thread pool
-                                            SubmitNumberSelectionRequest(httpClient, numberToSelect, score, userIndex, userSelectedNumbers, 0);
+                                                SubmitNumberSelectionRequest(httpClient, numberToSelect, score, userIndex, userSelectedNumbers, 0);
 
                                             Console.WriteLine($"User {userIndex}: Queued selected number {numberToSelect} with score {score} at timeLeft={0}");
                                         }
