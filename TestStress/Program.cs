@@ -20,8 +20,8 @@ namespace BingoSignalRClient
         //private const int CARD_DELAY = 100; // 1 hour
         //private const int SELECT_DELAY = 100; // 1 hour
         //private static int MAX_TIMER = int.Parse(Environment.GetEnvironmentVariable("MAX_TIMER"));
-        private static int USER_DELAY = int.Parse(Environment.GetEnvironmentVariable("delay"));
-        private static int semaphore = int.Parse(Environment.GetEnvironmentVariable("semaphore"));
+        private static int USER_DELAY = 4;
+        private static int semaphore = 200;
 
         private static int fail = 0;
         private static int notif = 0;
