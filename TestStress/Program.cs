@@ -44,7 +44,7 @@ namespace BingoSignalRClient
         private static List<UserToken> userTokens = new List<UserToken>();
 
         // Path to the tokens file (default value, can be overridden by command-line argument)
-        private static string tokensFilePath = "/app/testnew/tokens.json";
+        private static string tokensFilePath = "/app/testnew
 
         static async Task Main(string[] args)
         {
