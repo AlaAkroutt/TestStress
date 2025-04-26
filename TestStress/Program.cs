@@ -38,7 +38,7 @@ namespace BingoSignalRClient
         private static readonly SemaphoreSlim numberSelectionSemaphore = new SemaphoreSlim(10, 10);
 
         // Static flag to control whether distribution should proceed
-        private static bool allowDistribution = true;
+        private static bool allowDistribution = false;
 
         // List to store user tokens loaded from file
         private static List<UserToken> userTokens = new List<UserToken>();
@@ -105,13 +105,13 @@ namespace BingoSignalRClient
             }
 
             // Start a separate task to wait for user input to resume distribution
-            //Task.Run(() =>
-            //{
-            //    Console.WriteLine("\nPress Enter to allow card distribution to proceed when the 'distribution_in_progress' event occurs...");
-            //    Console.ReadLine();
-            //    Console.WriteLine("\n*** DISTRIBUTION UNPAUSED - All threads will now proceed with card operations ***\n");
-            //    allowDistribution = true; // Set the flag to allow distribution to proceed
-            //});
+            Task.Run(() =>
+            {
+                Console.WriteLine("\nPress Enter to allow card distribution to proceed when the 'distribution_in_progress' event occurs...");
+                Console.ReadLine();
+                Console.WriteLine("\n*** DISTRIBUTION UNPAUSED - All threads will now proceed with card operations ***\n");
+                allowDistribution = true; // Set the flag to allow distribution to proceed
+            });
 
             // Wait for all tasks to complete
             await Task.WhenAll(tasks);
@@ -493,126 +493,126 @@ namespace BingoSignalRClient
                         await cardOperationsSemaphore.WaitAsync();
                         Console.WriteLine($"User {userIndex}: Acquired semaphore for card operations");
 
-                        while (!foundUniqueCards && retryCount < maxRetries)
-                        {
-                            try
-                            {
-                                Console.WriteLine($"User {userIndex}: Attempt {retryCount + 1} to get unique cards...");
-                                var cardsResponse = await httpClient.GetAsync($"{BASE_URL}/api/Card");
-                                cardsResponse.EnsureSuccessStatusCode();
+                    //    while (!foundUniqueCards && retryCount < maxRetries)
+                    //    {
+                    //        try
+                    //        {
+                    //            Console.WriteLine($"User {userIndex}: Attempt {retryCount + 1} to get unique cards...");
+                    //            var cardsResponse = await httpClient.GetAsync($"{BASE_URL}/api/Card");
+                    //            cardsResponse.EnsureSuccessStatusCode();
 
-                                var cardsResponseBody = await cardsResponse.Content.ReadAsStringAsync();
-                                cards = JsonConvert.DeserializeObject<List<Card>>(cardsResponseBody);
+                    //            var cardsResponseBody = await cardsResponse.Content.ReadAsStringAsync();
+                    //            cards = JsonConvert.DeserializeObject<List<Card>>(cardsResponseBody);
 
-                                if (cards == null || cards.Count == 0)
-                                {
-                                    throw new Exception("Received empty or null card list");
-                                }
+                    //            if (cards == null || cards.Count == 0)
+                    //            {
+                    //                throw new Exception("Received empty or null card list");
+                    //            }
 
-                                Console.WriteLine($"User {userIndex}: Got cards ids {string.Join(", ", cards.Select(c => c.Id))}");
-                                // Check if these cards have been assigned to other users
-                                bool hasDuplicateCards = false;
-                                string duplicateDetails = "";
-                                Dictionary<int, int> tempCardAssignments = new Dictionary<int, int>();
+                    //            Console.WriteLine($"User {userIndex}: Got cards ids {string.Join(", ", cards.Select(c => c.Id))}");
+                    //            // Check if these cards have been assigned to other users
+                    //            bool hasDuplicateCards = false;
+                    //            string duplicateDetails = "";
+                    //            Dictionary<int, int> tempCardAssignments = new Dictionary<int, int>();
 
-                                lock (cardMapLock)
-                                {
-                                    foreach (var card in cards ?? new List<Card>())
-                                    {
-                                        if (cardIdToUserMap.TryGetValue(card.Id, out int existingUserId))
-                                        {
-                                            hasDuplicateCards = true;
-                                            duplicateDetails += $"Card {card.Id} already assigned to user {existingUserId}. ";
-                                        }
-                                        else
-                                        {
-                                            // Track this card as a potential assignment
-                                            tempCardAssignments[card.Id] = userId;
-                                        }
-                                    }
+                    //            lock (cardMapLock)
+                    //            {
+                    //                foreach (var card in cards ?? new List<Card>())
+                    //                {
+                    //                    if (cardIdToUserMap.TryGetValue(card.Id, out int existingUserId))
+                    //                    {
+                    //                        hasDuplicateCards = true;
+                    //                        duplicateDetails += $"Card {card.Id} already assigned to user {existingUserId}. ";
+                    //                    }
+                    //                    else
+                    //                    {
+                    //                        // Track this card as a potential assignment
+                    //                        tempCardAssignments[card.Id] = userId;
+                    //                    }
+                    //                }
 
-                                    if (!hasDuplicateCards)
-                                    {
-                                        // No duplicates found, record these cards as assigned to this user
-                                        foreach (var entry in tempCardAssignments)
-                                        {
-                                            cardIdToUserMap[entry.Key] = entry.Value;
-                                        }
-                                        foundUniqueCards = true;
-                                    }
-                                    else
-                                    {
-                                        retryCount++;
-                                        Console.WriteLine($"WARNING: User {userIndex} with user ID {userId}: Received duplicate cards! {duplicateDetails} Retrying ({retryCount}/{maxRetries})...");
-                                        hasDuplicateCards = true; // Set flag to use outside lock
-                                    }
-                                }
+                    //                if (!hasDuplicateCards)
+                    //                {
+                    //                    // No duplicates found, record these cards as assigned to this user
+                    //                    foreach (var entry in tempCardAssignments)
+                    //                    {
+                    //                        cardIdToUserMap[entry.Key] = entry.Value;
+                    //                    }
+                    //                    foundUniqueCards = true;
+                    //                }
+                    //                else
+                    //                {
+                    //                    retryCount++;
+                    //                    Console.WriteLine($"WARNING: User {userIndex} with user ID {userId}: Received duplicate cards! {duplicateDetails} Retrying ({retryCount}/{maxRetries})...");
+                    //                    hasDuplicateCards = true; // Set flag to use outside lock
+                    //                }
+                    //            }
 
-                                // Wait a bit before retrying if duplicates were found
-                                if (hasDuplicateCards)
-                                {
-                                    await Task.Delay(10);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                retryCount++;
-                                Console.WriteLine($"User {userIndex}: Error getting cards: {ex.Message}. Retrying ({retryCount}/{maxRetries})...");
-                                await Task.Delay(50); // Wait a bit longer after an error
-                            }
-                        //}
+                    //            // Wait a bit before retrying if duplicates were found
+                    //            if (hasDuplicateCards)
+                    //            {
+                    //                await Task.Delay(10);
+                    //            }
+                    //        }
+                    //        catch (Exception ex)
+                    //        {
+                    //            retryCount++;
+                    //            Console.WriteLine($"User {userIndex}: Error getting cards: {ex.Message}. Retrying ({retryCount}/{maxRetries})...");
+                    //            await Task.Delay(50); // Wait a bit longer after an error
+                    //        }
+                    //    //}
 
-                        if (!foundUniqueCards)
-                        {
-                            Console.WriteLine($"ERROR: User {userIndex} with user ID {userId}: Could not get unique cards after {maxRetries} retries. Proceeding with potentially duplicate cards.");
+                    //    if (!foundUniqueCards)
+                    //    {
+                    //        Console.WriteLine($"ERROR: User {userIndex} with user ID {userId}: Could not get unique cards after {maxRetries} retries. Proceeding with potentially duplicate cards.");
 
-                            // As a last resort, record these cards as assigned to this user
-                            lock (cardMapLock)
-                            {
-                                foreach (var card in cards ?? new List<Card>())
-                                {
-                                    cardIdToUserMap[card.Id] = userId;
-                                }
-                            }
-                        }
+                    //        // As a last resort, record these cards as assigned to this user
+                    //        lock (cardMapLock)
+                    //        {
+                    //            foreach (var card in cards ?? new List<Card>())
+                    //            {
+                    //                cardIdToUserMap[card.Id] = userId;
+                    //            }
+                    //        }
+                    //    }
 
-                        Console.WriteLine($"User {userIndex} with user ID {userId}: Got {cards?.Count ?? 0} cards with ids: {string.Join(", ", cards?.Select(c => c.Id) ?? new List<int>())}");
+                    //    Console.WriteLine($"User {userIndex} with user ID {userId}: Got {cards?.Count ?? 0} cards with ids: {string.Join(", ", cards?.Select(c => c.Id) ?? new List<int>())}");
 
-                        if (cards?.Count > 0)
-                        {
-                            var selectedId = cards[0].Id; // Select the first card for simplicity
-                                                          //var random = new Random();
-                                                          //var randomDelay = random.Next(SELECT_DELAY); // Random delay up to 1 hour
+                    //    if (cards?.Count > 0)
+                    //    {
+                    //        var selectedId = cards[0].Id; // Select the first card for simplicity
+                    //                                      //var random = new Random();
+                    //                                      //var randomDelay = random.Next(SELECT_DELAY); // Random delay up to 1 hour
 
-                            // Use Task.Delay instead of setTimeout
-                            //await Task.Delay(randomDelay);
+                    //        // Use Task.Delay instead of setTimeout
+                    //        //await Task.Delay(randomDelay);
 
-                            try
-                            {
-                                var selectCardData = new { id = selectedId };
-                                var selectCardContent = new StringContent(
-                                    JsonConvert.SerializeObject(selectCardData),
-                                    Encoding.UTF8,
-                                    "application/json"
-                                );
+                    //        try
+                    //        {
+                    //            var selectCardData = new { id = selectedId };
+                    //            var selectCardContent = new StringContent(
+                    //                JsonConvert.SerializeObject(selectCardData),
+                    //                Encoding.UTF8,
+                    //                "application/json"
+                    //            );
 
-                                //var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
-                                //selectCardResponse.EnsureSuccessStatusCode();
+                    //            var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
+                    //            selectCardResponse.EnsureSuccessStatusCode();
 
-                                Console.WriteLine($"User {userIndex}: Card selected");
-                                Interlocked.Increment(ref notif);
-                                cardSelected = true;
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"User {userIndex}: Failed to select card: {ex.Message}");
-                            }
-                        }
+                    //            Console.WriteLine($"User {userIndex}: Card selected");
+                    //            Interlocked.Increment(ref notif);
+                    //            cardSelected = true;
+                    //        }
+                    //        catch (Exception ex)
+                    //        {
+                    //            Console.WriteLine($"User {userIndex}: Failed to select card: {ex.Message}");
+                    //        }
+                    //    }
 
-                        // Release the semaphore after all card operations are completed
-                        cardOperationsSemaphore.Release();
-                        Console.WriteLine($"User {userIndex}: Released semaphore for card operations");
-                    }
+                    //    // Release the semaphore after all card operations are completed
+                    //    cardOperationsSemaphore.Release();
+                    //    Console.WriteLine($"User {userIndex}: Released semaphore for card operations");
+                    //}
 
                     //if (status == "emission_in_progress")
                     //{
