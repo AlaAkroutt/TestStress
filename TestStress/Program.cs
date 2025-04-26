@@ -38,13 +38,13 @@ namespace BingoSignalRClient
         private static readonly SemaphoreSlim numberSelectionSemaphore = new SemaphoreSlim(10, 10);
 
         // Static flag to control whether distribution should proceed
-        private static bool allowDistribution = false;
+        private static bool allowDistribution = true;
 
         // List to store user tokens loaded from file
         private static List<UserToken> userTokens = new List<UserToken>();
 
         // Path to the tokens file (default value, can be overridden by command-line argument)
-        private static string tokensFilePath = "/app/testnew";
+        private static string tokensFilePath = "tokens.json";
 
         static async Task Main(string[] args)
         {
@@ -105,13 +105,13 @@ namespace BingoSignalRClient
             }
 
             // Start a separate task to wait for user input to resume distribution
-            Task.Run(() =>
-            {
-                Console.WriteLine("\nPress Enter to allow card distribution to proceed when the 'distribution_in_progress' event occurs...");
-                Console.ReadLine();
-                Console.WriteLine("\n*** DISTRIBUTION UNPAUSED - All threads will now proceed with card operations ***\n");
-                allowDistribution = true; // Set the flag to allow distribution to proceed
-            });
+            //Task.Run(() =>
+            //{
+            //    Console.WriteLine("\nPress Enter to allow card distribution to proceed when the 'distribution_in_progress' event occurs...");
+            //    Console.ReadLine();
+            //    Console.WriteLine("\n*** DISTRIBUTION UNPAUSED - All threads will now proceed with card operations ***\n");
+            //    allowDistribution = true; // Set the flag to allow distribution to proceed
+            //});
 
             // Wait for all tasks to complete
             await Task.WhenAll(tasks);
@@ -463,12 +463,11 @@ namespace BingoSignalRClient
                 List<Card> cards = null;
 
                 // Handle "status" event (game progress)
-                connection.On<string>("status", async (status) =>
-                {
-                    Console.WriteLine($"User {userIndex}: SignalR status = {status}");
+               
+                    //Console.WriteLine($"User {userIndex}: SignalR status = {status}");
 
-                    if (status == "distribution_in_progress" && !cardSelected)
-                    {
+                    //if (status == "distribution_in_progress" && !cardSelected)
+                    //{
                         // Step 4: Get Cards
                         Console.WriteLine($"User {userIndex}: Getting cards...");
                         bool foundUniqueCards = false;
@@ -561,7 +560,7 @@ namespace BingoSignalRClient
                                 Console.WriteLine($"User {userIndex}: Error getting cards: {ex.Message}. Retrying ({retryCount}/{maxRetries})...");
                                 await Task.Delay(50); // Wait a bit longer after an error
                             }
-                        }
+                        //}
 
                         if (!foundUniqueCards)
                         {
@@ -597,8 +596,8 @@ namespace BingoSignalRClient
                                     "application/json"
                                 );
 
-                                var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
-                                selectCardResponse.EnsureSuccessStatusCode();
+                                //var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
+                                //selectCardResponse.EnsureSuccessStatusCode();
 
                                 Console.WriteLine($"User {userIndex}: Card selected");
                                 Interlocked.Increment(ref notif);
@@ -615,11 +614,11 @@ namespace BingoSignalRClient
                         Console.WriteLine($"User {userIndex}: Released semaphore for card operations");
                     }
 
-                    if (status == "emission_in_progress")
-                    {
+                    //if (status == "emission_in_progress")
+                    //{
                         selectedCard = cards[0];
-                    }
-                });
+                    //}
+               
 
                 // Handle "NumberSelected" event (user receives notification of a number to select)
                 connection.On<int>("NumberSelected",async (number) =>
