@@ -668,10 +668,9 @@ namespace BingoSignalRClient
                     if (selectedCard != null)
                     {
                         // Check for bingo winning conditions when timer reaches 0
-                        if (timeLeft == 0)
-                        {
-                            await CheckAndDeclareWinningConditions(httpClient, selectedCard, userSelectedNumbers, userIndex);
-                        }
+                        //if (timeLeft == 0)
+                        //{
+                        //}
                         // Use timeLeft to distribute the load
                         // For example, some users will select at timeLeft = 10, others at 9, etc.
                         // This creates a more natural distribution based on the user's index
@@ -717,8 +716,10 @@ namespace BingoSignalRClient
 
                                             //Console.WriteLine($"User {userIndex}: Sent selected number {numberToSelect} with score {score} at timeLeft={timeLeft}");
                                             Interlocked.Increment(ref notif);
-                                        }
-                                        catch (Exception ex)
+                                        await CheckAndDeclareWinningConditions(httpClient, selectedCard, userSelectedNumbers, userIndex);
+
+                                    }
+                                    catch (Exception ex)
                                         {
                                             Console.WriteLine($"User {userIndex}: Error sending selected number: {ex.Message}");
                                         }
