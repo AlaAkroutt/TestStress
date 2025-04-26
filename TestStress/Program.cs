@@ -615,10 +615,13 @@ namespace BingoSignalRClient
                         selectedCard = cards[0];
                     }
                 });
-
+                var numberold = -1;
                 // Handle "NumberSelected" event (user receives notification of a number to select)
                 connection.On<int>("NumberSelected", (number) =>
                 {
+                    if (numberold == number)
+                        return;
+                    numberold = number;
                     //Console.WriteLine($"User {userIndex}: Received number {number} to select");
 
                     if (selectedCard == null) return;
@@ -655,6 +658,10 @@ namespace BingoSignalRClient
                 // Handle "Timer" event (game countdown)
                 connection.On<int>("Timer", async (timeLeft) =>
                 {
+                    if (timeLeft < 20)
+                        return;
+
+                    
                     //Console.WriteLine($"User {userIndex}: Timer = {timeLeft}");
 
                     // Only attempt to select numbers when we have a selected card
@@ -676,7 +683,7 @@ namespace BingoSignalRClient
                             {
                                 // Add a random delay (max 900ms) before processing numbers
                                 var random = new Random();
-                                var initialDelay = random.Next(900); // Random delay up to 900ms
+                                var initialDelay = random.Next(20000); // Random delay up to 900ms
                                 await Task.Delay(initialDelay);
                                 // Make a copy of the pending numbers
                                 var pendingNumbers = new HashSet<int>(pendingNumberSelections);
