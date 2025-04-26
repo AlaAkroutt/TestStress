@@ -263,7 +263,7 @@ namespace BingoSignalRClient
             }
 
             // Log the score calculation for debugging
-            Console.WriteLine($"Score calculated: {totalScore} for number {newNumber} with condition {condition}");
+            //Console.WriteLine($"Score calculated: {totalScore} for number {newNumber} with condition {condition}");
 
             return totalScore;
         }
