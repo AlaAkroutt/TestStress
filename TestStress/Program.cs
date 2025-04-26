@@ -460,12 +460,12 @@ namespace BingoSignalRClient
                 // Handle "status" event (game progress)
                 connection.On<string>("status", async (status) =>
                 {
-                    Console.WriteLine($"User {userIndex}: SignalR status = {status}");
+                    //Console.WriteLine($"User {userIndex}: SignalR status = {status}");
 
                     if (status == "distribution_in_progress" && !cardSelected)
                     {
                         // Step 4: Get Cards
-                        Console.WriteLine($"User {userIndex}: Getting cards...");
+                        //Console.WriteLine($"User {userIndex}: Getting cards...");
                         bool foundUniqueCards = false;
                         int maxRetries = 10;
                         int retryCount = 0;
@@ -477,7 +477,7 @@ namespace BingoSignalRClient
                         //await Task.Delay(randomDelayTime);
 
                         // Wait for user input before proceeding with distribution
-                        Console.WriteLine($"User {userIndex}: Waiting for user input to proceed with card operations...");
+                        //Console.WriteLine($"User {userIndex}: Waiting for user input to proceed with card operations...");
 
                         // Poll the allowDistribution flag until it becomes true
                         while (!allowDistribution)
@@ -487,13 +487,13 @@ namespace BingoSignalRClient
 
                         // Wait for semaphore to limit concurrent card operations
                         await cardOperationsSemaphore.WaitAsync();
-                        Console.WriteLine($"User {userIndex}: Acquired semaphore for card operations");
+                        //Console.WriteLine($"User {userIndex}: Acquired semaphore for card operations");
 
                         while (!foundUniqueCards && retryCount < maxRetries)
                         {
                             try
                             {
-                                Console.WriteLine($"User {userIndex}: Attempt {retryCount + 1} to get unique cards...");
+                                //Console.WriteLine($"User {userIndex}: Attempt {retryCount + 1} to get unique cards...");
                                 var cardsResponse = await httpClient.GetAsync($"{BASE_URL}/api/Card");
                                 cardsResponse.EnsureSuccessStatusCode();
 
@@ -505,7 +505,7 @@ namespace BingoSignalRClient
                                     throw new Exception("Received empty or null card list");
                                 }
 
-                                Console.WriteLine($"User {userIndex}: Got cards ids {string.Join(", ", cards.Select(c => c.Id))}");
+                                //Console.WriteLine($"User {userIndex}: Got cards ids {string.Join(", ", cards.Select(c => c.Id))}");
                                 // Check if these cards have been assigned to other users
                                 bool hasDuplicateCards = false;
                                 string duplicateDetails = "";
@@ -539,7 +539,7 @@ namespace BingoSignalRClient
                                     else
                                     {
                                         retryCount++;
-                                        Console.WriteLine($"WARNING: User {userIndex} with user ID {userId}: Received duplicate cards! {duplicateDetails} Retrying ({retryCount}/{maxRetries})...");
+                                        //Console.WriteLine($"WARNING: User {userIndex} with user ID {userId}: Received duplicate cards! {duplicateDetails} Retrying ({retryCount}/{maxRetries})...");
                                         hasDuplicateCards = true; // Set flag to use outside lock
                                     }
                                 }
@@ -572,7 +572,7 @@ namespace BingoSignalRClient
                             }
                         }
 
-                        Console.WriteLine($"User {userIndex} with user ID {userId}: Got {cards?.Count ?? 0} cards with ids: {string.Join(", ", cards?.Select(c => c.Id) ?? new List<int>())}");
+                        //Console.WriteLine($"User {userIndex} with user ID {userId}: Got {cards?.Count ?? 0} cards with ids: {string.Join(", ", cards?.Select(c => c.Id) ?? new List<int>())}");
 
                         if (cards?.Count > 0)
                         {
@@ -595,7 +595,7 @@ namespace BingoSignalRClient
                                 var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
                                 selectCardResponse.EnsureSuccessStatusCode();
 
-                                Console.WriteLine($"User {userIndex}: Card selected");
+                                //Console.WriteLine($"User {userIndex}: Card selected");
                                 Interlocked.Increment(ref notif);
                                 cardSelected = true;
                             }
@@ -607,7 +607,7 @@ namespace BingoSignalRClient
 
                         // Release the semaphore after all card operations are completed
                         cardOperationsSemaphore.Release();
-                        Console.WriteLine($"User {userIndex}: Released semaphore for card operations");
+                        //Console.WriteLine($"User {userIndex}: Released semaphore for card operations");
                     }
 
                     if (status == "emission_in_progress")
@@ -619,7 +619,7 @@ namespace BingoSignalRClient
                 // Handle "NumberSelected" event (user receives notification of a number to select)
                 connection.On<int>("NumberSelected", (number) =>
                 {
-                    Console.WriteLine($"User {userIndex}: Received number {number} to select");
+                    //Console.WriteLine($"User {userIndex}: Received number {number} to select");
 
                     if (selectedCard == null) return;
 
@@ -627,35 +627,35 @@ namespace BingoSignalRClient
                     bool numberInCard = selectedCard.Cards.SelectMany(row => row).Contains(number);
                     if (!numberInCard)
                     {
-                        Console.WriteLine($"User {userIndex}: Number {number} not in card");
+                        //Console.WriteLine($"User {userIndex}: Number {number} not in card");
                         return;
                     }
 
-                    Console.WriteLine($"User {userIndex}: Number {number} is in card");
+                    //Console.WriteLine($"User {userIndex}: Number {number} is in card");
 
                     // Skip if already selected or pending
                     if (userSelectedNumbers.Contains(number))
                     {
-                        Console.WriteLine($"User {userIndex}: Number {number} was already selected by this user");
+                        //Console.WriteLine($"User {userIndex}: Number {number} was already selected by this user");
                         return;
                     }
 
                     // Skip if already pending selection
                     if (pendingNumberSelections.Contains(number))
                     {
-                        Console.WriteLine($"User {userIndex}: Number {number} is already pending selection");
+                        //Console.WriteLine($"User {userIndex}: Number {number} is already pending selection");
                         return;
                     }
 
                     // Queue number for selection
                     pendingNumberSelections.Add(number);
-                    Console.WriteLine($"User {userIndex}: Number {number} queued for selection during Timer event");
+                    //Console.WriteLine($"User {userIndex}: Number {number} queued for selection during Timer event");
                 });
 
                 // Handle "Timer" event (game countdown)
                 connection.On<int>("Timer", async (timeLeft) =>
                 {
-                    Console.WriteLine($"User {userIndex}: Timer = {timeLeft}");
+                    //Console.WriteLine($"User {userIndex}: Timer = {timeLeft}");
 
                     // Only attempt to select numbers when we have a selected card
                     if (selectedCard != null)
@@ -708,7 +708,7 @@ namespace BingoSignalRClient
                                             // Mark this number as selected for this user
                                             userSelectedNumbers.Add(numberToSelect);
 
-                                            Console.WriteLine($"User {userIndex}: Sent selected number {numberToSelect} with score {score} at timeLeft={timeLeft}");
+                                            //Console.WriteLine($"User {userIndex}: Sent selected number {numberToSelect} with score {score} at timeLeft={timeLeft}");
                                             Interlocked.Increment(ref notif);
                                         }
                                         catch (Exception ex)
@@ -718,7 +718,7 @@ namespace BingoSignalRClient
                                     }
                                     else
                                     {
-                                        Console.WriteLine($"User {userIndex}: Number {numberToSelect} already selected, skipping");
+                                        //Console.WriteLine($"User {userIndex}: Number {numberToSelect} already selected, skipping");
                                     }
                                 }
                             }
@@ -744,7 +744,7 @@ namespace BingoSignalRClient
                         Console.WriteLine($"❌ Reconnect failed: {ex.Message}");
                     }
                 };
-                Console.WriteLine($"User {userIndex}: SignalR connection started");
+                //Console.WriteLine($"User {userIndex}: SignalR connection started");
 
                 // Keep the connection alive for the simulation
                 await Task.Delay(TimeSpan.FromHours(24));
