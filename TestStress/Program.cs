@@ -92,11 +92,7 @@ namespace BingoSignalRClient
                 // Add slight delay between user spawns
                 await Task.Delay(USER_DELAY);
 
-                lock (lockObject)
-                {
-                    Console.WriteLine($"Fail: {fail}");
-                    Console.WriteLine($"Notifications: {notif}");
-                }
+               
             }
 
             // Start a separate task to wait for user input to resume distribution
@@ -286,7 +282,7 @@ namespace BingoSignalRClient
 
                 if (rows == 0 || cols == 0)
                 {
-                    Console.WriteLine($"User {userIndex}: Invalid card format, cannot check winning conditions");
+                 //   Console.WriteLine($"User {userIndex}: Invalid card format, cannot check winning conditions");
                     return;
                 }
 
@@ -325,7 +321,7 @@ namespace BingoSignalRClient
                     if (colComplete)
                     {
                         winnerWithColumn = true;
-                        Console.WriteLine($"User {userIndex}: Completed a column (column {j})");
+                    //    Console.WriteLine($"User {userIndex}: Completed a column (column {j})");
                         break;
                     }
                 }
@@ -357,7 +353,7 @@ namespace BingoSignalRClient
                     if (diag1Complete || diag2Complete)
                     {
                         winnerWithDiagonal = true;
-                        Console.WriteLine($"User {userIndex}: Completed a diagonal");
+                     //   Console.WriteLine($"User {userIndex}: Completed a diagonal");
                     }
                 }
 
@@ -380,7 +376,7 @@ namespace BingoSignalRClient
                 if (allNumbersSelected)
                 {
                     winnerWithAllCarte = true;
-                    Console.WriteLine($"User {userIndex}: Completed the entire card!");
+                  //  Console.WriteLine($"User {userIndex}: Completed the entire card!");
                 }
 
                 // If any winning condition is met, call the winners API
@@ -439,7 +435,7 @@ namespace BingoSignalRClient
                 int userId = userToken.UserId;
                 string token = userToken.AccessToken;
 
-                Console.WriteLine($"User {userIndex}: Starting with userId {userId} and token...");
+               // Console.WriteLine($"User {userIndex}: Starting with userId {userId} and token...");
 
                 // Update headers with token
                 httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -592,8 +588,28 @@ namespace BingoSignalRClient
                                     "application/json"
                                 );
 
-                                var selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
-                                selectCardResponse.EnsureSuccessStatusCode();
+                               HttpResponseMessage selectCardResponse = null;
+int maxAttempts = 4;
+int attempt = 0;
+
+while (attempt < maxAttempts)
+{
+    attempt++;
+    selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
+
+    if (selectCardResponse.IsSuccessStatusCode)
+    {
+        break; // success, exit the loop
+    }
+    
+    if (attempt == maxAttempts)
+    {
+        selectCardResponse.EnsureSuccessStatusCode(); // throw if still failed after 4 tries
+    }
+
+    // Optional: Add a small delay before retrying
+    await Task.Delay(500);
+}
 
                                 //Console.WriteLine($"User {userIndex}: Card selected");
                                 Interlocked.Increment(ref notif);
