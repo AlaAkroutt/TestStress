@@ -728,7 +728,22 @@ namespace BingoSignalRClient
                 // Step 6: Start SignalR connection
                 await connection.StartAsync();
                 Console.WriteLine($"User {userIndex}: SignalR connection started");
+                connection.Closed += async (error) =>
+                {
+                    Console.WriteLine($"❌ Connection closed: {error?.Message}");
 
+                    // Optional: Try to reconnect manually if you want
+                    await Task.Delay(Random.Shared.Next(0, 5) * 1000);
+                    try
+                    {
+                        await connection.StartAsync();
+                        Console.WriteLine("✅ Reconnected after disconnect");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"❌ Reconnect failed: {ex.Message}");
+                    }
+                };
                 // Keep the connection alive for the simulation
                 await Task.Delay(TimeSpan.FromHours(24));
             }
