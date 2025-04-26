@@ -78,8 +78,17 @@ namespace BingoSignalRClient
                 int userIndex = i;
 
                 // Run each user simulation without semaphore limiting
-                tasks.Add(SimulateUser(userIndex));
-
+                tasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        await SimulateUser(userIndex);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error in user {userIndex} simulation: {ex.Message}");
+                    }
+                }));
                 // Add slight delay between user spawns
                 await Task.Delay(USER_DELAY);
 
