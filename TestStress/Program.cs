@@ -405,7 +405,7 @@ namespace BingoSignalRClient
                 }
                 else
                 {
-                    Console.WriteLine($"User {userIndex}: No winning conditions met yet");
+                    //Console.WriteLine($"User {userIndex}: No winning conditions met yet");
                 }
             }
             catch (Exception ex)
