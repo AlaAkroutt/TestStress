@@ -724,8 +724,33 @@ while (attempt < maxAttempts)
                                                 "application/json"
                                             );
 
-                                            var numberResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
-                                            numberResponse.EnsureSuccessStatusCode();
+
+
+
+                                        HttpResponseMessage selectCardResponse = null;
+                                        int maxAttempts = 4;
+                                        int attempt = 0;
+
+                                        while (attempt < maxAttempts)
+                                        {
+                                            attempt++;
+                                            selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
+
+                                            if (selectCardResponse.IsSuccessStatusCode)
+                                            {
+                                                break; // success, exit the loop
+                                            }
+
+                                            if (attempt == maxAttempts)
+                                            {
+                                                selectCardResponse.EnsureSuccessStatusCode(); // throw if still failed after 4 tries
+                                            }
+
+                                            // Optional: Add a small delay before retrying
+                                            await Task.Delay(500);
+                                        }
+                           
+                                           
 
                                             // Mark this number as selected for this user
                                             userSelectedNumbers.Add(numberToSelect);
