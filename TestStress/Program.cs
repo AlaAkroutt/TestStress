@@ -287,75 +287,8 @@ namespace BingoSignalRClient
                 }
 
                 // Check for line win (complete row)
-                for (int i = 0; i < rows; i++)
-                {
-                    bool rowComplete = true;
-                    for (int j = 0; j < cols; j++)
-                    {
-                        if (!selectedNumbers.Contains(cardGrid[i][j]))
-                        {
-                            rowComplete = false;
-                            break;
-                        }
-                    }
-                    if (rowComplete)
-                    {
-                        winnerWithLine = true;
-                        Console.WriteLine($"User {userIndex}: Completed a line (row {i})");
-                        break;
-                    }
-                }
-
-                // Check for column win (complete column)
-                for (int j = 0; j < cols; j++)
-                {
-                    bool colComplete = true;
-                    for (int i = 0; i < rows; i++)
-                    {
-                        if (!selectedNumbers.Contains(cardGrid[i][j]))
-                        {
-                            colComplete = false;
-                            break;
-                        }
-                    }
-                    if (colComplete)
-                    {
-                        winnerWithColumn = true;
-                    //    Console.WriteLine($"User {userIndex}: Completed a column (column {j})");
-                        break;
-                    }
-                }
-
-                // Check for diagonal win (top-left to bottom-right)
-                if (rows == cols) // Only check diagonal if it's a square grid
-                {
-                    bool diag1Complete = true;
-                    for (int i = 0; i < rows; i++)
-                    {
-                        if (!selectedNumbers.Contains(cardGrid[i][i]))
-                        {
-                            diag1Complete = false;
-                            break;
-                        }
-                    }
-
-                    // Check for diagonal win (top-right to bottom-left)
-                    bool diag2Complete = true;
-                    for (int i = 0; i < rows; i++)
-                    {
-                        if (!selectedNumbers.Contains(cardGrid[i][cols - 1 - i]))
-                        {
-                            diag2Complete = false;
-                            break;
-                        }
-                    }
-
-                    if (diag1Complete || diag2Complete)
-                    {
-                        winnerWithDiagonal = true;
-                     //   Console.WriteLine($"User {userIndex}: Completed a diagonal");
-                    }
-                }
+           
+ 
 
                 // Check for full card win
                 bool allNumbersSelected = true;
@@ -380,7 +313,7 @@ namespace BingoSignalRClient
                 }
 
                 // If any winning condition is met, call the winners API
-                if (winnerWithLine || winnerWithColumn || winnerWithDiagonal || winnerWithAllCarte)
+                if ( winnerWithAllCarte)
                 {
                     var winnerData = new
                     {
