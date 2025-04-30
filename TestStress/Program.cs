@@ -599,7 +599,7 @@ while (attempt < maxAttempts)
                 // Handle "Timer" event (game countdown)
                 connection.On<int>("Timer", async (timeLeft) =>
                 {
-                    if (timeLeft < 20)
+                    if (timeLeft < 40)
                         return;
 
                     
@@ -623,7 +623,7 @@ while (attempt < maxAttempts)
                             {
                                 // Add a random delay (max 900ms) before processing numbers
                                 var random = new Random();
-                                var initialDelay = random.Next(29000); // Random delay up to 900ms
+                                var initialDelay = random.Next(39000); // Random delay up to 900ms
                                 await Task.Delay(initialDelay);
                                 // Make a copy of the pending numbers
                                 var pendingNumbers = new HashSet<int>(pendingNumberSelections);
