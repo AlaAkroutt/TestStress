@@ -270,25 +270,17 @@ namespace BingoSignalRClient
             try
             {
                 // Initialize winning conditions
-                bool winnerWithLine = false;
-                bool winnerWithColumn = false;
-                bool winnerWithDiagonal = false;
+              
                 bool winnerWithAllCarte = false;
 
                 // Get the card grid
                 var cardGrid = card.Cards;
                 int rows = cardGrid.Count;
-                int cols = rows > 0 ? cardGrid[0].Count : 0;
+                int cols = rows;
 
-                if (rows == 0 || cols == 0)
-                {
-                 //   Console.WriteLine($"User {userIndex}: Invalid card format, cannot check winning conditions");
-                    return;
-                }
 
-                // Check for line win (complete row)
-           
- 
+
+
 
                 // Check for full card win
                 bool allNumbersSelected = true;
@@ -317,9 +309,9 @@ namespace BingoSignalRClient
                 {
                     var winnerData = new
                     {
-                        winnerWithLine = winnerWithLine,
-                        winnerWithColumn = winnerWithColumn,
-                        winnerWithDiagonal = winnerWithDiagonal,
+                        winnerWithLine = false,
+                        winnerWithColumn = false,
+                        winnerWithDiagonal = false,
                         winnerWithAllCarte = winnerWithAllCarte
                     };
 
@@ -329,7 +321,7 @@ namespace BingoSignalRClient
                         "application/json"
                     );
 
-                    Console.WriteLine($"User {userIndex}: Declaring bingo win with conditions: Line={winnerWithLine}, Column={winnerWithColumn}, Diagonal={winnerWithDiagonal}, AllCard={winnerWithAllCarte}");
+                    //Console.WriteLine($"User {userIndex}: Declaring bingo win with conditions: Line={winnerWithLine}, Column={winnerWithColumn}, Diagonal={winnerWithDiagonal}, AllCard={winnerWithAllCarte}");
 
                     var winnerResponse = await httpClient.PostAsync($"{BASE_URL}/api/winners", winnerContent);
                     winnerResponse.EnsureSuccessStatusCode();
