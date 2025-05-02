@@ -11,6 +11,7 @@ using System.IO;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.SignalR.Client;
 using Newtonsoft.Json;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace BingoSignalRClient
 {
@@ -751,7 +752,16 @@ while (attempt < maxAttempts)
                 });
 
                 // Step 6: Start SignalR connection
-                await connection.StartAsync();
+                try
+                {
+                    await connection.StartAsync();
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($" Connection closed: {e?.Message}");
+
+                }
+            
                 connection.Closed += async (error) =>
                 {
                     Console.WriteLine($"❌ Connection closed: {error?.Message}");
