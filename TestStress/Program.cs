@@ -443,10 +443,7 @@ namespace BingoSignalRClient
 
                 // Step 3: Connect to SignalR
                 var connection = new HubConnectionBuilder()
-                    .WithUrl($"{BASE_URL}/api/notificationsHub", options =>
-                    {
-                        options.AccessTokenProvider = () => Task.FromResult(token);
-                    })
+                    .WithUrl($"{BASE_URL}/api/notificationsHub")
                     .WithAutomaticReconnect()
                     .Build();
 
