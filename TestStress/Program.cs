@@ -749,36 +749,12 @@ while (attempt < maxAttempts)
                 });
 
                 // Step 6: Start SignalR connection
-                try
-                {
+                
                     await connection.StartAsync();
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($" Connection closed: {e?.Message}");
-
-                }
-            
-                connection.Closed += async (error) =>
-                {
-                    Console.WriteLine($"❌ Connection closed: {error?.Message}");
-
-                    // Optional: Try to reconnect manually if you want
-                    await Task.Delay(Random.Shared.Next(0, 5) * 1000);
-                    try
-                    {
-                        await connection.StartAsync();
-                        Console.WriteLine("✅ Reconnected after disconnect");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"❌ Reconnect failed: {ex.Message}");
-                    }
-                };
-                //Console.WriteLine($"User {userIndex}: SignalR connection started");
+                         //Console.WriteLine($"User {userIndex}: SignalR connection started");
 
                 // Keep the connection alive for the simulation
-                await Task.Delay(TimeSpan.FromHours(24));
+                await Task.Delay(Timeout.Infinite);
             }
             catch (Exception ex)
             {
