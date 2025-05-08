@@ -11,7 +11,6 @@ using System.IO;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.SignalR.Client;
 using Newtonsoft.Json;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace BingoSignalRClient
 {
@@ -93,7 +92,7 @@ namespace BingoSignalRClient
                 // Add slight delay between user spawns
                 await Task.Delay(USER_DELAY);
 
-               
+
             }
 
             // Start a separate task to wait for user input to resume distribution
@@ -283,7 +282,7 @@ namespace BingoSignalRClient
 
                 if (rows == 0 || cols == 0)
                 {
-                 //   Console.WriteLine($"User {userIndex}: Invalid card format, cannot check winning conditions");
+                    //   Console.WriteLine($"User {userIndex}: Invalid card format, cannot check winning conditions");
                     return;
                 }
 
@@ -322,7 +321,7 @@ namespace BingoSignalRClient
                     if (colComplete)
                     {
                         winnerWithColumn = true;
-                    //    Console.WriteLine($"User {userIndex}: Completed a column (column {j})");
+                        //    Console.WriteLine($"User {userIndex}: Completed a column (column {j})");
                         break;
                     }
                 }
@@ -354,7 +353,7 @@ namespace BingoSignalRClient
                     if (diag1Complete || diag2Complete)
                     {
                         winnerWithDiagonal = true;
-                     //   Console.WriteLine($"User {userIndex}: Completed a diagonal");
+                        //   Console.WriteLine($"User {userIndex}: Completed a diagonal");
                     }
                 }
 
@@ -377,7 +376,7 @@ namespace BingoSignalRClient
                 if (allNumbersSelected)
                 {
                     winnerWithAllCarte = true;
-                  //  Console.WriteLine($"User {userIndex}: Completed the entire card!");
+                    //  Console.WriteLine($"User {userIndex}: Completed the entire card!");
                 }
 
                 // If any winning condition is met, call the winners API
@@ -436,19 +435,19 @@ namespace BingoSignalRClient
                 int userId = userToken.UserId;
                 string token = userToken.AccessToken;
 
-               // Console.WriteLine($"User {userIndex}: Starting with userId {userId} and token...");
+                // Console.WriteLine($"User {userIndex}: Starting with userId {userId} and token...");
 
                 // Update headers with token
                 httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
                 // Step 3: Connect to SignalR
                 var connection = new HubConnectionBuilder()
-                        .WithUrl($"{BASE_URL}/api/notificationsHub", options =>
-                        {
-                            options.AccessTokenProvider = () => Task.FromResult(token);
-                        })
-                        .WithAutomaticReconnect()
-                        .Build();
+                    .WithUrl($"{BASE_URL}/api/notificationsHub", options =>
+                    {
+                        options.AccessTokenProvider = () => Task.FromResult(token);
+                    })
+                    .WithAutomaticReconnect()
+                    .Build();
 
                 bool cardSelected = false;
                 Card selectedCard = null;
@@ -589,28 +588,28 @@ namespace BingoSignalRClient
                                     "application/json"
                                 );
 
-                               HttpResponseMessage selectCardResponse = null;
-int maxAttempts = 4;
-int attempt = 0;
+                                HttpResponseMessage selectCardResponse = null;
+                                int maxAttempts = 4;
+                                int attempt = 0;
 
-while (attempt < maxAttempts)
-{
-    attempt++;
-    selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
+                                while (attempt < maxAttempts)
+                                {
+                                    attempt++;
+                                    selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/Card/Select", selectCardContent);
 
-    if (selectCardResponse.IsSuccessStatusCode)
-    {
-        break; // success, exit the loop
-    }
-    
-    if (attempt == maxAttempts)
-    {
-        selectCardResponse.EnsureSuccessStatusCode(); // throw if still failed after 4 tries
-    }
+                                    if (selectCardResponse.IsSuccessStatusCode)
+                                    {
+                                        break; // success, exit the loop
+                                    }
 
-    // Optional: Add a small delay before retrying
-    await Task.Delay(500);
-}
+                                    if (attempt == maxAttempts)
+                                    {
+                                        selectCardResponse.EnsureSuccessStatusCode(); // throw if still failed after 4 tries
+                                    }
+
+                                    // Optional: Add a small delay before retrying
+                                    await Task.Delay(500);
+                                }
 
                                 //Console.WriteLine($"User {userIndex}: Card selected");
                                 Interlocked.Increment(ref notif);
@@ -678,7 +677,7 @@ while (attempt < maxAttempts)
                     if (timeLeft < 20)
                         return;
 
-                    
+
                     //Console.WriteLine($"User {userIndex}: Timer = {timeLeft}");
 
                     // Only attempt to select numbers when we have a selected card
@@ -693,71 +692,111 @@ while (attempt < maxAttempts)
                         // This creates a more natural distribution based on the user's index
                         //int userSpecificTriggerTime = (userIndex % MAX_TIMER) + 1; // Distribute across 1-5 seconds
 
-                       
-                            // Process any pending number selections
-                            if (pendingNumberSelections.Count > 0)
+
+                        // Process any pending number selections
+                        if (pendingNumberSelections.Count > 0)
+                        {
+                            // Add a random delay (max 900ms) before processing numbers
+                            var random = new Random();
+                            var initialDelay = random.Next(20000); // Random delay up to 900ms
+                            await Task.Delay(initialDelay);
+                            // Make a copy of the pending numbers
+                            var pendingNumbers = new HashSet<int>(pendingNumberSelections);
+                            // Clear the pending selections as we're about to process them
+                            pendingNumberSelections.Clear();
+
+                            foreach (int numberToSelect in pendingNumbers)
                             {
-                                // Add a random delay (max 900ms) before processing numbers
-                                var random = new Random();
-                                var initialDelay = random.Next(45000); // Random delay up to 900ms
-                                await Task.Delay(initialDelay);
-                                // Make a copy of the pending numbers
-                                var pendingNumbers = new HashSet<int>(pendingNumberSelections);
-                                // Clear the pending selections as we're about to process them
-                                pendingNumberSelections.Clear();
+                                // Check if this number has already been selected
+                                bool alreadySelected = userSelectedNumbers.Contains(numberToSelect);
 
-                                foreach (int numberToSelect in pendingNumbers)
+                                if (!alreadySelected)
                                 {
-                                    // Check if this number has already been selected
-                                    bool alreadySelected = userSelectedNumbers.Contains(numberToSelect);
+                                    // Calculate score based on the card and currently selected numbers
+                                    int score = CalculateScore(selectedCard, userSelectedNumbers, numberToSelect);
 
-                                    if (!alreadySelected)
+                                    try
                                     {
-                                        // Calculate score based on the card and currently selected numbers
-                                        int score = CalculateScore(selectedCard, userSelectedNumbers, numberToSelect);
+                                        var numberData = new[] { numberToSelect, score };
+                                        var numberContent = new StringContent(
+                                            JsonConvert.SerializeObject(numberData),
+                                            Encoding.UTF8,
+                                            "application/json"
+                                        );
 
-                                        try
+
+
+
+                                        HttpResponseMessage selectCardResponse = null;
+                                        int maxAttempts = 4;
+                                        int attempt = 0;
+
+                                        while (attempt < maxAttempts)
                                         {
-                                            var numberData = new[] { numberToSelect, score };
-                                            var numberContent = new StringContent(
-                                                JsonConvert.SerializeObject(numberData),
-                                                Encoding.UTF8,
-                                                "application/json"
-                                            );
+                                            attempt++;
+                                            selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
 
-                                            var numberResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
-                                            numberResponse.EnsureSuccessStatusCode();
+                                            if (selectCardResponse.IsSuccessStatusCode)
+                                            {
+                                                break; // success, exit the loop
+                                            }
 
-                                            // Mark this number as selected for this user
-                                            userSelectedNumbers.Add(numberToSelect);
+                                            if (attempt == maxAttempts)
+                                            {
+                                                selectCardResponse.EnsureSuccessStatusCode(); // throw if still failed after 4 tries
+                                            }
 
-                                            //Console.WriteLine($"User {userIndex}: Sent selected number {numberToSelect} with score {score} at timeLeft={timeLeft}");
-                                            Interlocked.Increment(ref notif);
+                                            // Optional: Add a small delay before retrying
+                                            await Task.Delay(500);
+                                        }
+
+
+
+                                        // Mark this number as selected for this user
+                                        userSelectedNumbers.Add(numberToSelect);
+
+                                        //Console.WriteLine($"User {userIndex}: Sent selected number {numberToSelect} with score {score} at timeLeft={timeLeft}");
+                                        Interlocked.Increment(ref notif);
                                         await CheckAndDeclareWinningConditions(httpClient, selectedCard, userSelectedNumbers, userIndex);
 
                                     }
                                     catch (Exception ex)
-                                        {
-                                            Console.WriteLine($"User {userIndex}: Error sending selected number: {ex.Message}");
-                                        }
-                                    }
-                                    else
                                     {
-                                        //Console.WriteLine($"User {userIndex}: Number {numberToSelect} already selected, skipping");
+                                        Console.WriteLine($"User {userIndex}: Error sending selected number: {ex.Message}");
                                     }
                                 }
+                                else
+                                {
+                                    //Console.WriteLine($"User {userIndex}: Number {numberToSelect} already selected, skipping");
+                                }
                             }
-                         
+                        }
+
                     }
                 });
 
                 // Step 6: Start SignalR connection
-                
-                    await connection.StartAsync();
-                         //Console.WriteLine($"User {userIndex}: SignalR connection started");
+                await connection.StartAsync();
+                connection.Closed += async (error) =>
+                {
+                    Console.WriteLine($"❌ Connection closed: {error?.Message}");
+
+                    // Optional: Try to reconnect manually if you want
+                    await Task.Delay(Random.Shared.Next(0, 5) * 1000);
+                    try
+                    {
+                        await connection.StartAsync();
+                        Console.WriteLine("✅ Reconnected after disconnect");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"❌ Reconnect failed: {ex.Message}");
+                    }
+                };
+                //Console.WriteLine($"User {userIndex}: SignalR connection started");
 
                 // Keep the connection alive for the simulation
-                await Task.Delay(Timeout.Infinite);
+                await Task.Delay(TimeSpan.FromHours(24));
             }
             catch (Exception ex)
             {
