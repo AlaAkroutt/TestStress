@@ -98,9 +98,9 @@ namespace BingoSignalRClient
             // Start a separate task to wait for user input to resume distribution
             Task.Run(() =>
             {
-                Console.WriteLine("\nPress Enter to allow card distribution to proceed when the 'distribution_in_progress' event occurs...");
+                Console.WriteLine("SignalR Completed !!");
                 Console.ReadLine();
-                Console.WriteLine("\n*** DISTRIBUTION UNPAUSED - All threads will now proceed with card operations ***\n");
+                Console.WriteLine("Select Card !");
                 allowDistribution = true; // Set the flag to allow distribution to proceed
             });
 
@@ -724,33 +724,8 @@ namespace BingoSignalRClient
                                             "application/json"
                                         );
 
-
-
-
-                                        HttpResponseMessage selectCardResponse = null;
-                                        int maxAttempts = 4;
-                                        int attempt = 0;
-
-                                        while (attempt < maxAttempts)
-                                        {
-                                            attempt++;
-                                            selectCardResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
-
-                                            if (selectCardResponse.IsSuccessStatusCode)
-                                            {
-                                                break; // success, exit the loop
-                                            }
-
-                                            if (attempt == maxAttempts)
-                                            {
-                                                selectCardResponse.EnsureSuccessStatusCode(); // throw if still failed after 4 tries
-                                            }
-
-                                            // Optional: Add a small delay before retrying
-                                            await Task.Delay(500);
-                                        }
-
-
+                                        var numberResponse = await httpClient.PostAsync($"{BASE_URL}/api/SelectedNumberClient/Number", numberContent);
+                                        numberResponse.EnsureSuccessStatusCode();
 
                                         // Mark this number as selected for this user
                                         userSelectedNumbers.Add(numberToSelect);
