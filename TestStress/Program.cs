@@ -11,6 +11,7 @@ using System.IO;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.SignalR.Client;
 using Newtonsoft.Json;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace BingoSignalRClient
 {
@@ -98,9 +99,9 @@ namespace BingoSignalRClient
             // Start a separate task to wait for user input to resume distribution
             Task.Run(() =>
             {
-                Console.WriteLine("SignalR Completed !!");
+                Console.WriteLine("\nPress Enter to allow card distribution to proceed when the 'distribution_in_progress' event occurs...");
                 Console.ReadLine();
-                Console.WriteLine("Select Card !");
+                Console.WriteLine("\n*** DISTRIBUTION UNPAUSED - All threads will now proceed with card operations ***\n");
                 allowDistribution = true; // Set the flag to allow distribution to proceed
             });
 
@@ -442,12 +443,12 @@ namespace BingoSignalRClient
 
                 // Step 3: Connect to SignalR
                 var connection = new HubConnectionBuilder()
-                    .WithUrl($"{BASE_URL}/api/notificationsHub", options =>
-                    {
-                        options.AccessTokenProvider = () => Task.FromResult(token);
-                    })
-                    .WithAutomaticReconnect()
-                    .Build();
+                        .WithUrl($"{BASE_URL}/api/notificationsHub", options =>
+                        {
+                            options.AccessTokenProvider = () => Task.FromResult(token);
+                        })
+                        .WithAutomaticReconnect()
+                        .Build();
 
                 bool cardSelected = false;
                 Card selectedCard = null;
@@ -697,9 +698,9 @@ namespace BingoSignalRClient
                         if (pendingNumberSelections.Count > 0)
                         {
                             // Add a random delay (max 900ms) before processing numbers
-                            var random = new Random();
-                            var initialDelay = random.Next(20000); // Random delay up to 900ms
-                            await Task.Delay(initialDelay);
+                            //var random = new Random();
+                            //var initialDelay = random.Next(1); // Random delay up to 900ms
+                            //await Task.Delay(initialDelay);
                             // Make a copy of the pending numbers
                             var pendingNumbers = new HashSet<int>(pendingNumberSelections);
                             // Clear the pending selections as we're about to process them
@@ -751,27 +752,12 @@ namespace BingoSignalRClient
                 });
 
                 // Step 6: Start SignalR connection
-                await connection.StartAsync();
-                connection.Closed += async (error) =>
-                {
-                    Console.WriteLine($"❌ Connection closed: {error?.Message}");
 
-                    // Optional: Try to reconnect manually if you want
-                    await Task.Delay(Random.Shared.Next(0, 5) * 1000);
-                    try
-                    {
-                        await connection.StartAsync();
-                        Console.WriteLine("✅ Reconnected after disconnect");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"❌ Reconnect failed: {ex.Message}");
-                    }
-                };
+                await connection.StartAsync();
                 //Console.WriteLine($"User {userIndex}: SignalR connection started");
 
                 // Keep the connection alive for the simulation
-                await Task.Delay(TimeSpan.FromHours(24));
+                await Task.Delay(Timeout.Infinite);
             }
             catch (Exception ex)
             {
